@@ -1,0 +1,625 @@
+#!/usr/bin/env python3
+"""Cron-friendly z.ai inference speed monitor.
+
+Required env vars:
+- ZAI_API_KEY
+- ZAI_BASE_URL (e.g. https://api.z.ai/api/coding/paas/v4)
+- ZAI_MODEL
+- MONGODB_URI
+
+Optional env vars:
+- MONGO_DB (default: zaimonitor)
+- MONGO_COLLECTION (default: inference_runs)
+- CONNECT_TIMEOUT_SECONDS (default: 15)
+- STREAM_READ_TIMEOUT_SECONDS (default: 600)
+- HTTP_TIMEOUT_SECONDS (legacy fallback for stream read timeout)
+- REQUEST_RETRIES (default: 2)
+- REQUEST_RETRY_BACKOFF_SECONDS (default: 1.5)
+- AUTO_LOAD_DOTENV (default: true)
+- ENV_FILE (default: .env)
+- LOG_PROGRESS (default: true)
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from statistics import mean
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
+from pymongo import MongoClient
+from pymongo.collection import Collection
+
+
+PROMPT_SUITE = [
+    (
+        "Write a complete Python function `is_palindrome(text: str) -> bool` that ignores "
+        "case and non-alphanumeric characters. Then provide exactly 2 pytest tests using these "
+        "inputs and expected outputs: 'RaceCar' -> True, 'hello' -> False. Return only code."
+    ),
+    (
+        "Given this JavaScript snippet: `const nums=[1,2,3,4,5,6];` write a cleaner function "
+        "`getEvenSquares(nums)` that returns the squares of even numbers. Use modern JS "
+        "(arrow functions, filter, map). Then show the exact output for the given `nums`."
+    ),
+    (
+        "Analyze the following JSON and return: (1) total requests, (2) error rate in %, "
+        "(3) average latency_ms for successful requests only, (4) top 2 endpoints by total "
+        "traffic.\n\n"
+        "JSON:\n"
+        "{\n"
+        "  \"window\": \"2026-02-21T10:00:00Z/2026-02-21T10:05:00Z\",\n"
+        "  \"requests\": [\n"
+        "    {\"id\":\"r1\",\"endpoint\":\"/chat/completions\",\"status\":200,\"latency_ms\":820},\n"
+        "    {\"id\":\"r2\",\"endpoint\":\"/chat/completions\",\"status\":200,\"latency_ms\":910},\n"
+        "    {\"id\":\"r3\",\"endpoint\":\"/embeddings\",\"status\":500,\"latency_ms\":1200},\n"
+        "    {\"id\":\"r4\",\"endpoint\":\"/chat/completions\",\"status\":429,\"latency_ms\":300},\n"
+        "    {\"id\":\"r5\",\"endpoint\":\"/embeddings\",\"status\":200,\"latency_ms\":640},\n"
+        "    {\"id\":\"r6\",\"endpoint\":\"/rerank\",\"status\":200,\"latency_ms\":450},\n"
+        "    {\"id\":\"r7\",\"endpoint\":\"/chat/completions\",\"status\":200,\"latency_ms\":780},\n"
+        "    {\"id\":\"r8\",\"endpoint\":\"/rerank\",\"status\":503,\"latency_ms\":990},\n"
+        "    {\"id\":\"r9\",\"endpoint\":\"/chat/completions\",\"status\":200,\"latency_ms\":870},\n"
+        "    {\"id\":\"r10\",\"endpoint\":\"/embeddings\",\"status\":200,\"latency_ms\":610},\n"
+        "    {\"id\":\"r11\",\"endpoint\":\"/chat/completions\",\"status\":200,\"latency_ms\":760},\n"
+        "    {\"id\":\"r12\",\"endpoint\":\"/chat/completions\",\"status\":200,\"latency_ms\":840},\n"
+        "    {\"id\":\"r13\",\"endpoint\":\"/embeddings\",\"status\":200,\"latency_ms\":590},\n"
+        "    {\"id\":\"r14\",\"endpoint\":\"/rerank\",\"status\":200,\"latency_ms\":430},\n"
+        "    {\"id\":\"r15\",\"endpoint\":\"/chat/completions\",\"status\":504,\"latency_ms\":1500},\n"
+        "    {\"id\":\"r16\",\"endpoint\":\"/embeddings\",\"status\":200,\"latency_ms\":605},\n"
+        "    {\"id\":\"r17\",\"endpoint\":\"/chat/completions\",\"status\":200,\"latency_ms\":790},\n"
+        "    {\"id\":\"r18\",\"endpoint\":\"/rerank\",\"status\":200,\"latency_ms\":470},\n"
+        "    {\"id\":\"r19\",\"endpoint\":\"/chat/completions\",\"status\":200,\"latency_ms\":815},\n"
+        "    {\"id\":\"r20\",\"endpoint\":\"/embeddings\",\"status\":200,\"latency_ms\":625}\n"
+        "  ]\n"
+        "}\n\n"
+        "Treat status >= 400 as errors. Show calculations briefly."
+    ),
+    (
+        "Write a short SQL query for PostgreSQL. Schema: orders(order_id, created_at, status), "
+        "order_items(order_id, product_id, quantity, unit_price), products(product_id, name). "
+        "Goal: top 3 products by revenue in last 30 days from completed orders only "
+        "(orders.status='completed'). Return columns: product_id, name, revenue."
+    ),
+    (
+        "Provide a concise pull request reliability checklist with exactly 8 bullet points, "
+        "focused on error handling, retries, timeouts, observability, and rollback safety."
+    ),
+]
+
+
+@dataclass
+class Config:
+    zai_api_key: str
+    zai_base_url: str
+    zai_model: str
+    mongodb_uri: str
+    mongo_db: str = "zaimonitor"
+    mongo_collection: str = "inference_runs"
+    connect_timeout_seconds: int = 15
+    stream_read_timeout_seconds: int = 600
+    request_retries: int = 2
+    request_retry_backoff_seconds: float = 1.5
+    log_progress: bool = True
+
+
+class ConfigError(Exception):
+    pass
+
+
+def _parse_env_line(line: str) -> Optional[Tuple[str, str]]:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#"):
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped[len("export ") :].strip()
+    if "=" not in stripped:
+        return None
+
+    key, value = stripped.split("=", 1)
+    key = key.strip()
+    value = value.strip()
+
+    if not key:
+        return None
+
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        value = value[1:-1]
+
+    return key, value
+
+
+def load_dotenv_into_environ() -> None:
+    auto_load = os.getenv("AUTO_LOAD_DOTENV", "true").strip().lower()
+    if auto_load in {"0", "false", "no", "off"}:
+        return
+
+    env_file = os.getenv("ENV_FILE", ".env")
+    path = Path(env_file)
+    if not path.is_absolute():
+        path = Path.cwd() / path
+
+    if not path.exists() or not path.is_file():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        parsed = _parse_env_line(raw_line)
+        if not parsed:
+            continue
+        key, value = parsed
+        os.environ.setdefault(key, value)
+
+
+def load_config() -> Config:
+    required = ["ZAI_API_KEY", "ZAI_BASE_URL", "ZAI_MODEL", "MONGODB_URI"]
+    missing = [key for key in required if not os.getenv(key)]
+    if missing:
+        raise ConfigError(f"Missing required env vars: {', '.join(missing)}")
+
+    legacy_http_timeout = os.getenv("HTTP_TIMEOUT_SECONDS")
+    stream_read_timeout = os.getenv("STREAM_READ_TIMEOUT_SECONDS", legacy_http_timeout or "600")
+
+    return Config(
+        zai_api_key=os.environ["ZAI_API_KEY"],
+        zai_base_url=os.environ["ZAI_BASE_URL"].rstrip("/"),
+        zai_model=os.environ["ZAI_MODEL"],
+        mongodb_uri=os.environ["MONGODB_URI"],
+        mongo_db=os.getenv("MONGO_DB", "zaimonitor"),
+        mongo_collection=os.getenv("MONGO_COLLECTION", "inference_runs"),
+        connect_timeout_seconds=int(os.getenv("CONNECT_TIMEOUT_SECONDS", "15")),
+        stream_read_timeout_seconds=int(stream_read_timeout),
+        request_retries=int(os.getenv("REQUEST_RETRIES", "2")),
+        request_retry_backoff_seconds=float(os.getenv("REQUEST_RETRY_BACKOFF_SECONDS", "1.5")),
+        log_progress=os.getenv("LOG_PROGRESS", "true").strip().lower() not in {"0", "false", "no", "off"},
+    )
+
+
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def estimate_visible_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return len(re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE))
+
+
+def _extract_usage(payload: Dict[str, Any]) -> Dict[str, Optional[int]]:
+    usage = payload.get("usage")
+    if not isinstance(usage, dict):
+        return {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+        }
+
+    return {
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "total_tokens": usage.get("total_tokens"),
+    }
+
+
+def _safe_json_loads(raw: str) -> Optional[Dict[str, Any]]:
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:
+        return None
+
+
+def stream_chat_completion(
+    cfg: Config,
+    prompt: str,
+    request_id: str,
+) -> Dict[str, Any]:
+    url = f"{cfg.zai_base_url}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {cfg.zai_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": cfg.zai_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+
+    start_mono = time.monotonic()
+    start_wall = now_utc()
+
+    attempt = 0
+    last_error: Optional[str] = None
+
+    while attempt <= cfg.request_retries:
+        attempt += 1
+        text_parts: List[str] = []
+        first_token_mono: Optional[float] = None
+        finish_mono: Optional[float] = None
+        usage: Dict[str, Optional[int]] = {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+        }
+        status_code: Optional[int] = None
+        error_payload: Optional[Dict[str, Any]] = None
+
+        try:
+            with requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                stream=True,
+                timeout=(cfg.connect_timeout_seconds, cfg.stream_read_timeout_seconds),
+            ) as response:
+                status_code = response.status_code
+                headers_received_mono = time.monotonic()
+                header_latency_ms = (headers_received_mono - start_mono) * 1000
+
+                if response.status_code >= 400:
+                    try:
+                        error_payload = response.json()
+                    except Exception:
+                        error_payload = {"raw": response.text[:4000]}
+
+                    finish_mono = time.monotonic()
+                    return {
+                        "ok": False,
+                        "http_status": status_code,
+                        "error": "http_error",
+                        "error_payload": error_payload,
+                        "attempt": attempt,
+                        "started_at": start_wall,
+                        "finished_at": now_utc(),
+                        "header_latency_ms": header_latency_ms,
+                        "ttft_ms": None,
+                        "total_latency_ms": (finish_mono - start_mono) * 1000,
+                        "generation_window_ms": None,
+                        "response_text": "",
+                        "response_chars": 0,
+                        "usage": usage,
+                        "request_id": request_id,
+                    }
+
+                for raw_line in response.iter_lines(decode_unicode=True):
+                    if raw_line is None:
+                        continue
+                    line = raw_line.strip()
+                    if not line:
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        finish_mono = time.monotonic()
+                        break
+
+                    event = _safe_json_loads(data)
+                    if not event:
+                        continue
+
+                    event_usage = _extract_usage(event)
+                    if any(v is not None for v in event_usage.values()):
+                        usage = event_usage
+
+                    choices = event.get("choices")
+                    if isinstance(choices, list) and choices:
+                        choice0 = choices[0]
+                        delta = choice0.get("delta") if isinstance(choice0, dict) else None
+                        if isinstance(delta, dict):
+                            content = delta.get("content")
+                            if isinstance(content, str) and content:
+                                if first_token_mono is None:
+                                    first_token_mono = time.monotonic()
+                                text_parts.append(content)
+
+                        finish_reason = choice0.get("finish_reason") if isinstance(choice0, dict) else None
+                        if finish_reason is not None and finish_mono is None:
+                            finish_mono = time.monotonic()
+
+                if finish_mono is None:
+                    finish_mono = time.monotonic()
+
+                response_text = "".join(text_parts)
+                ttft_ms = None
+                generation_window_ms = None
+                output_tokens_per_second = None
+
+                if first_token_mono is not None:
+                    ttft_ms = (first_token_mono - start_mono) * 1000
+                    generation_window_ms = max((finish_mono - first_token_mono) * 1000, 0.0)
+
+                completion_tokens = usage.get("completion_tokens")
+                if (
+                    completion_tokens is not None
+                    and generation_window_ms is not None
+                    and generation_window_ms > 0
+                ):
+                    output_tokens_per_second = completion_tokens / (generation_window_ms / 1000)
+
+                return {
+                    "ok": True,
+                    "http_status": status_code,
+                    "error": None,
+                    "error_payload": None,
+                    "attempt": attempt,
+                    "started_at": start_wall,
+                    "finished_at": now_utc(),
+                    "header_latency_ms": header_latency_ms,
+                    "ttft_ms": ttft_ms,
+                    "total_latency_ms": (finish_mono - start_mono) * 1000,
+                    "generation_window_ms": generation_window_ms,
+                    "output_tokens_per_second": output_tokens_per_second,
+                    "response_text": response_text,
+                    "response_chars": len(response_text),
+                    "usage": usage,
+                    "request_id": request_id,
+                }
+
+        except requests.RequestException as exc:
+            last_error = str(exc)
+            if attempt <= cfg.request_retries:
+                time.sleep(cfg.request_retry_backoff_seconds * attempt)
+                continue
+
+            finish_mono = time.monotonic()
+            return {
+                "ok": False,
+                "http_status": status_code,
+                "error": "network_error",
+                "error_payload": {"message": last_error},
+                "attempt": attempt,
+                "started_at": start_wall,
+                "finished_at": now_utc(),
+                "header_latency_ms": None,
+                "ttft_ms": None,
+                "total_latency_ms": (finish_mono - start_mono) * 1000,
+                "generation_window_ms": None,
+                "response_text": "",
+                "response_chars": 0,
+                "usage": usage,
+                "request_id": request_id,
+            }
+
+    finish_mono = time.monotonic()
+    return {
+        "ok": False,
+        "http_status": None,
+        "error": "unknown_error",
+        "error_payload": {"message": last_error or "Unknown failure"},
+        "attempt": attempt,
+        "started_at": start_wall,
+        "finished_at": now_utc(),
+        "header_latency_ms": None,
+        "ttft_ms": None,
+        "total_latency_ms": (finish_mono - start_mono) * 1000,
+        "generation_window_ms": None,
+        "response_text": "",
+        "response_chars": 0,
+        "usage": {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+        },
+        "request_id": request_id,
+    }
+
+
+def build_mongo_collection(cfg: Config) -> Collection:
+    client = MongoClient(cfg.mongodb_uri, serverSelectionTimeoutMS=10000)
+    db = client[cfg.mongo_db]
+    collection = db[cfg.mongo_collection]
+    return collection
+
+
+def build_document(
+    cfg: Config,
+    run_id: str,
+    prompt_index: int,
+    prompt: str,
+    result: Dict[str, Any],
+) -> Dict[str, Any]:
+    usage = result.get("usage") or {}
+    completion_tokens = usage.get("completion_tokens")
+    prompt_tokens = usage.get("prompt_tokens")
+    response_text = result.get("response_text") or ""
+    visible_output_tokens_estimate = estimate_visible_tokens(response_text)
+
+    chars_per_second = None
+    visible_tokens_per_second = None
+    generation_window_ms = result.get("generation_window_ms")
+    response_chars = result.get("response_chars")
+    if generation_window_ms and generation_window_ms > 0 and response_chars is not None:
+        chars_per_second = response_chars / (generation_window_ms / 1000)
+        visible_tokens_per_second = visible_output_tokens_estimate / (generation_window_ms / 1000)
+
+    return {
+        "run_id": run_id,
+        "request_id": result.get("request_id"),
+        "timestamp": now_utc(),
+        "provider": "z.ai",
+        "endpoint_base": cfg.zai_base_url,
+        "endpoint_path": "/chat/completions",
+        "model": cfg.zai_model,
+        "prompt_index": prompt_index,
+        "prompt_hash": sha256_text(prompt),
+        "prompt_length": len(prompt),
+        "ok": result.get("ok", False),
+        "http_status": result.get("http_status"),
+        "attempt": result.get("attempt"),
+        "metrics": {
+            "header_latency_ms": result.get("header_latency_ms"),
+            "ttft_ms": result.get("ttft_ms"),
+            "total_latency_ms": result.get("total_latency_ms"),
+            "generation_window_ms": generation_window_ms,
+            "provider_output_tokens_per_second": result.get("output_tokens_per_second"),
+            "visible_output_tokens_per_second": visible_tokens_per_second,
+            "output_chars_per_second": chars_per_second,
+        },
+        "tokens": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": usage.get("total_tokens"),
+            "visible_output_tokens_estimate": visible_output_tokens_estimate,
+        },
+        "error": {
+            "type": result.get("error"),
+            "payload": result.get("error_payload"),
+        },
+        "response_preview": (result.get("response_text") or "")[:500],
+        "started_at": result.get("started_at"),
+        "finished_at": result.get("finished_at"),
+    }
+
+
+def print_summary(run_id: str, documents: List[Dict[str, Any]]) -> None:
+    total = len(documents)
+    successes = [doc for doc in documents if doc.get("ok")]
+    failures = total - len(successes)
+
+    ttft_values = [
+        doc["metrics"]["ttft_ms"]
+        for doc in successes
+        if doc.get("metrics", {}).get("ttft_ms") is not None
+    ]
+    tps_values = [
+        doc["metrics"]["provider_output_tokens_per_second"]
+        for doc in successes
+        if doc.get("metrics", {}).get("provider_output_tokens_per_second") is not None
+    ]
+    visible_tps_values = [
+        doc["metrics"]["visible_output_tokens_per_second"]
+        for doc in successes
+        if doc.get("metrics", {}).get("visible_output_tokens_per_second") is not None
+    ]
+    total_latency_values = [
+        doc["metrics"]["total_latency_ms"]
+        for doc in successes
+        if doc.get("metrics", {}).get("total_latency_ms") is not None
+    ]
+
+    print(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "total_requests": total,
+                "successes": len(successes),
+                "failures": failures,
+                "avg_ttft_ms": mean(ttft_values) if ttft_values else None,
+                "avg_provider_output_tokens_per_second": mean(tps_values) if tps_values else None,
+                "avg_visible_output_tokens_per_second": mean(visible_tps_values) if visible_tps_values else None,
+                "avg_total_latency_ms": mean(total_latency_values) if total_latency_values else None,
+                "max_total_latency_ms": max(total_latency_values) if total_latency_values else None,
+                "timestamp": now_utc().isoformat(),
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def print_progress(event: str, payload: Dict[str, Any], enabled: bool) -> None:
+    if not enabled:
+        return
+    print(
+        json.dumps(
+            {
+                "event": event,
+                "timestamp": now_utc().isoformat(),
+                **payload,
+            },
+            ensure_ascii=False,
+        )
+    )
+
+
+def main() -> int:
+    load_dotenv_into_environ()
+
+    try:
+        cfg = load_config()
+    except ConfigError as exc:
+        print(f"CONFIG_ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    run_id = str(uuid.uuid4())
+    documents: List[Dict[str, Any]] = []
+
+    print_progress(
+        event="run_start",
+        payload={
+            "run_id": run_id,
+            "model": cfg.zai_model,
+            "base_url": cfg.zai_base_url,
+            "prompt_count": len(PROMPT_SUITE),
+        },
+        enabled=cfg.log_progress,
+    )
+
+    for prompt_index, prompt in enumerate(PROMPT_SUITE, start=1):
+        request_id = str(uuid.uuid4())
+        print_progress(
+            event="request_start",
+            payload={
+                "run_id": run_id,
+                "request_id": request_id,
+                "prompt_index": prompt_index,
+                "prompt_length": len(prompt),
+            },
+            enabled=cfg.log_progress,
+        )
+
+        result = stream_chat_completion(cfg=cfg, prompt=prompt, request_id=request_id)
+        document = build_document(cfg, run_id, prompt_index, prompt, result)
+        documents.append(document)
+
+        print_progress(
+            event="request_done",
+            payload={
+                "run_id": run_id,
+                "request_id": request_id,
+                "prompt_index": prompt_index,
+                "ok": document.get("ok"),
+                "http_status": document.get("http_status"),
+                "header_latency_ms": document.get("metrics", {}).get("header_latency_ms"),
+                "ttft_ms": document.get("metrics", {}).get("ttft_ms"),
+                "total_latency_ms": document.get("metrics", {}).get("total_latency_ms"),
+                "provider_output_tokens_per_second": document.get("metrics", {}).get("provider_output_tokens_per_second"),
+                "visible_output_tokens_per_second": document.get("metrics", {}).get("visible_output_tokens_per_second"),
+            },
+            enabled=cfg.log_progress,
+        )
+
+    try:
+        collection = build_mongo_collection(cfg)
+        if documents:
+            collection.insert_many(documents, ordered=True)
+    except Exception as exc:
+        print(f"MONGO_WRITE_ERROR: {exc}", file=sys.stderr)
+        print_summary(run_id, documents)
+        return 3
+
+    print_summary(run_id, documents)
+
+    if all(not d.get("ok", False) for d in documents):
+        return 4
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
