@@ -13,6 +13,7 @@ Runs 5 fixed prompts against z.ai, measuring:
 - **HTTP Status & Errors**: detailed error diagnostics
 
 Results are persisted as JSON documents in MongoDB Atlas (`zaimonitor.inference_runs` by default).
+Each document now includes `metrics_version=2`, where latency metrics are measured per final attempt.
 
 ## Setup
 
@@ -67,7 +68,7 @@ The script auto-loads `.env` from the working directory, so ensure you're in the
 
 ## MongoDB Schema
 
-See [MONGO.md](MONGO.md) for the document structure and example queries.
+See [`script/MONGO.md`](script/MONGO.md) for the document structure and example queries.
 
 ## Architecture
 
@@ -93,13 +94,25 @@ Each is self-contained with all needed context, so the model doesn't ask for cla
 | Metric | Meaning |
 |--------|---------|
 | `header_latency_ms` | Time to receive HTTP headers (network + server queueing) |
-| `ttft_ms` | Time to first token (header_latency + model thinking/generation start) |
+| `first_sse_event_ms` | Time to first streamed `data:` event (even if no visible text yet) |
+| `ttft_ms` | Time to first visible token chunk |
 | `total_latency_ms` | Total request duration (everything from start to end) |
 | `generation_window_ms` | Time from first to last token (ttft_ms to finish) |
 | `provider_output_tokens_per_second` | Provider-reported completion_tokens ÷ generation window |
+| `provider_output_tokens_per_second_end_to_end` | Provider-reported completion_tokens ÷ total_latency_ms |
 | `visible_output_tokens_per_second` | Estimated tokens in actual returned text ÷ generation window |
 
-The two throughput metrics often differ because providers may count internal/utility tokens not visible in the output.
+Provider-reported TPS can be much higher than visible TPS when the provider token count includes non-visible/internal tokens.
+
+## Metric Semantics
+
+- Timings are measured from the final attempt start when retries happen.
+- `generation_window_ms` ends when stream completion is observed (`[DONE]` / stream end), not at `finish_reason`.
+- Indexes are auto-created for dashboard workloads:
+  - `{ timestamp: 1 }`
+  - `{ model: 1, timestamp: 1 }`
+  - `{ ok: 1, timestamp: 1 }`
+  - `{ metrics_version: 1, timestamp: 1 }`
 
 ## Troubleshooting
 

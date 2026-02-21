@@ -36,7 +36,7 @@ from statistics import mean
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from pymongo import MongoClient
+from pymongo import ASCENDING, IndexModel, MongoClient
 from pymongo.collection import Collection
 
 
@@ -94,6 +94,8 @@ PROMPT_SUITE = [
         "focused on error handling, retries, timeouts, observability, and rollback safety."
     ),
 ]
+
+METRICS_VERSION = 2
 
 
 @dataclass
@@ -239,17 +241,22 @@ def stream_chat_completion(
         "stream_options": {"include_usage": True},
     }
 
-    start_mono = time.monotonic()
-    start_wall = now_utc()
-
     attempt = 0
     last_error: Optional[str] = None
+    last_attempt_start_mono = time.monotonic()
+    last_attempt_start_wall = now_utc()
 
     while attempt <= cfg.request_retries:
         attempt += 1
+        attempt_start_mono = time.monotonic()
+        attempt_start_wall = now_utc()
+        last_attempt_start_mono = attempt_start_mono
+        last_attempt_start_wall = attempt_start_wall
         text_parts: List[str] = []
+        first_sse_event_mono: Optional[float] = None
         first_token_mono: Optional[float] = None
-        finish_mono: Optional[float] = None
+        sse_event_count = 0
+        content_chunk_count = 0
         usage: Dict[str, Optional[int]] = {
             "prompt_tokens": None,
             "completion_tokens": None,
@@ -268,7 +275,7 @@ def stream_chat_completion(
             ) as response:
                 status_code = response.status_code
                 headers_received_mono = time.monotonic()
-                header_latency_ms = (headers_received_mono - start_mono) * 1000
+                header_latency_ms = (headers_received_mono - attempt_start_mono) * 1000
 
                 if response.status_code >= 400:
                     try:
@@ -283,11 +290,11 @@ def stream_chat_completion(
                         "error": "http_error",
                         "error_payload": error_payload,
                         "attempt": attempt,
-                        "started_at": start_wall,
+                        "started_at": attempt_start_wall,
                         "finished_at": now_utc(),
                         "header_latency_ms": header_latency_ms,
                         "ttft_ms": None,
-                        "total_latency_ms": (finish_mono - start_mono) * 1000,
+                        "total_latency_ms": (finish_mono - attempt_start_mono) * 1000,
                         "generation_window_ms": None,
                         "response_text": "",
                         "response_chars": 0,
@@ -306,8 +313,10 @@ def stream_chat_completion(
 
                     data = line[5:].strip()
                     if data == "[DONE]":
-                        finish_mono = time.monotonic()
                         break
+                    if first_sse_event_mono is None:
+                        first_sse_event_mono = time.monotonic()
+                    sse_event_count += 1
 
                     event = _safe_json_loads(data)
                     if not event:
@@ -326,22 +335,21 @@ def stream_chat_completion(
                             if isinstance(content, str) and content:
                                 if first_token_mono is None:
                                     first_token_mono = time.monotonic()
+                                content_chunk_count += 1
                                 text_parts.append(content)
-
-                        finish_reason = choice0.get("finish_reason") if isinstance(choice0, dict) else None
-                        if finish_reason is not None and finish_mono is None:
-                            finish_mono = time.monotonic()
-
-                if finish_mono is None:
-                    finish_mono = time.monotonic()
+                finish_mono = time.monotonic()
 
                 response_text = "".join(text_parts)
+                first_sse_event_ms = None
                 ttft_ms = None
                 generation_window_ms = None
                 output_tokens_per_second = None
+                output_tokens_per_second_end_to_end = None
 
+                if first_sse_event_mono is not None:
+                    first_sse_event_ms = (first_sse_event_mono - attempt_start_mono) * 1000
                 if first_token_mono is not None:
-                    ttft_ms = (first_token_mono - start_mono) * 1000
+                    ttft_ms = (first_token_mono - attempt_start_mono) * 1000
                     generation_window_ms = max((finish_mono - first_token_mono) * 1000, 0.0)
 
                 completion_tokens = usage.get("completion_tokens")
@@ -351,6 +359,9 @@ def stream_chat_completion(
                     and generation_window_ms > 0
                 ):
                     output_tokens_per_second = completion_tokens / (generation_window_ms / 1000)
+                total_latency_ms = (finish_mono - attempt_start_mono) * 1000
+                if completion_tokens is not None and total_latency_ms > 0:
+                    output_tokens_per_second_end_to_end = completion_tokens / (total_latency_ms / 1000)
 
                 return {
                     "ok": True,
@@ -358,13 +369,17 @@ def stream_chat_completion(
                     "error": None,
                     "error_payload": None,
                     "attempt": attempt,
-                    "started_at": start_wall,
+                    "started_at": attempt_start_wall,
                     "finished_at": now_utc(),
                     "header_latency_ms": header_latency_ms,
+                    "first_sse_event_ms": first_sse_event_ms,
                     "ttft_ms": ttft_ms,
-                    "total_latency_ms": (finish_mono - start_mono) * 1000,
+                    "total_latency_ms": total_latency_ms,
                     "generation_window_ms": generation_window_ms,
                     "output_tokens_per_second": output_tokens_per_second,
+                    "output_tokens_per_second_end_to_end": output_tokens_per_second_end_to_end,
+                    "sse_event_count": sse_event_count,
+                    "content_chunk_count": content_chunk_count,
                     "response_text": response_text,
                     "response_chars": len(response_text),
                     "usage": usage,
@@ -384,11 +399,11 @@ def stream_chat_completion(
                 "error": "network_error",
                 "error_payload": {"message": last_error},
                 "attempt": attempt,
-                "started_at": start_wall,
+                "started_at": attempt_start_wall,
                 "finished_at": now_utc(),
                 "header_latency_ms": None,
                 "ttft_ms": None,
-                "total_latency_ms": (finish_mono - start_mono) * 1000,
+                "total_latency_ms": (finish_mono - attempt_start_mono) * 1000,
                 "generation_window_ms": None,
                 "response_text": "",
                 "response_chars": 0,
@@ -403,11 +418,11 @@ def stream_chat_completion(
         "error": "unknown_error",
         "error_payload": {"message": last_error or "Unknown failure"},
         "attempt": attempt,
-        "started_at": start_wall,
+        "started_at": last_attempt_start_wall,
         "finished_at": now_utc(),
         "header_latency_ms": None,
         "ttft_ms": None,
-        "total_latency_ms": (finish_mono - start_mono) * 1000,
+        "total_latency_ms": (finish_mono - last_attempt_start_mono) * 1000,
         "generation_window_ms": None,
         "response_text": "",
         "response_chars": 0,
@@ -427,6 +442,20 @@ def build_mongo_collection(cfg: Config) -> Collection:
     return collection
 
 
+def ensure_collection_indexes(collection: Collection) -> None:
+    collection.create_indexes(
+        [
+            IndexModel([("timestamp", ASCENDING)], name="timestamp_asc"),
+            IndexModel([("model", ASCENDING), ("timestamp", ASCENDING)], name="model_timestamp_asc"),
+            IndexModel([("ok", ASCENDING), ("timestamp", ASCENDING)], name="ok_timestamp_asc"),
+            IndexModel(
+                [("metrics_version", ASCENDING), ("timestamp", ASCENDING)],
+                name="metrics_version_timestamp_asc",
+            ),
+        ]
+    )
+
+
 def build_document(
     cfg: Config,
     run_id: str,
@@ -439,6 +468,9 @@ def build_document(
     prompt_tokens = usage.get("prompt_tokens")
     response_text = result.get("response_text") or ""
     visible_output_tokens_estimate = estimate_visible_tokens(response_text)
+    token_visibility_ratio = None
+    if completion_tokens and completion_tokens > 0:
+        token_visibility_ratio = visible_output_tokens_estimate / completion_tokens
 
     chars_per_second = None
     visible_tokens_per_second = None
@@ -452,6 +484,7 @@ def build_document(
         "run_id": run_id,
         "request_id": result.get("request_id"),
         "timestamp": now_utc(),
+        "metrics_version": METRICS_VERSION,
         "provider": "z.ai",
         "endpoint_base": cfg.zai_base_url,
         "endpoint_path": "/chat/completions",
@@ -464,12 +497,17 @@ def build_document(
         "attempt": result.get("attempt"),
         "metrics": {
             "header_latency_ms": result.get("header_latency_ms"),
+            "first_sse_event_ms": result.get("first_sse_event_ms"),
             "ttft_ms": result.get("ttft_ms"),
             "total_latency_ms": result.get("total_latency_ms"),
             "generation_window_ms": generation_window_ms,
             "provider_output_tokens_per_second": result.get("output_tokens_per_second"),
+            "provider_output_tokens_per_second_end_to_end": result.get("output_tokens_per_second_end_to_end"),
             "visible_output_tokens_per_second": visible_tokens_per_second,
             "output_chars_per_second": chars_per_second,
+            "sse_event_count": result.get("sse_event_count"),
+            "content_chunk_count": result.get("content_chunk_count"),
+            "token_visibility_ratio": token_visibility_ratio,
         },
         "tokens": {
             "prompt_tokens": prompt_tokens,
@@ -606,6 +644,7 @@ def main() -> int:
 
     try:
         collection = build_mongo_collection(cfg)
+        ensure_collection_indexes(collection)
         if documents:
             collection.insert_many(documents, ordered=True)
     except Exception as exc:

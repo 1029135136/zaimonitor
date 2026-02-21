@@ -8,7 +8,7 @@ on:
       - script/**
 
   schedule:
-    - cron: "*/30 * * * *"   # every 30 minutes (UTC)
+    - cron: "30 * * * *"   # at :30 each hour (UTC)
 
   workflow_dispatch:
 

@@ -10,6 +10,7 @@
   "run_id": "uuid",
   "request_id": "uuid",
   "timestamp": "ISO 8601 datetime",
+  "metrics_version": 2,
   "provider": "z.ai",
   "endpoint_base": "https://api.z.ai/api/coding/paas/v4",
   "endpoint_path": "/chat/completions",
@@ -22,12 +23,17 @@
   "attempt": 1,
   "metrics": {
     "header_latency_ms": 450,
+    "first_sse_event_ms": 700,
     "ttft_ms": 1200,
     "total_latency_ms": 2100,
     "generation_window_ms": 900,
     "provider_output_tokens_per_second": 45.5,
+    "provider_output_tokens_per_second_end_to_end": 31.2,
     "visible_output_tokens_per_second": 42.1,
-    "output_chars_per_second": 210.5
+    "output_chars_per_second": 210.5,
+    "sse_event_count": 18,
+    "content_chunk_count": 12,
+    "token_visibility_ratio": 0.72
   },
   "tokens": {
     "prompt_tokens": 80,
@@ -51,13 +57,19 @@
 |-------|------|-------|
 | `run_id` | string | Identifier for each script execution; groups 5 prompts together |
 | `request_id` | string | Unique ID per individual API request |
+| `metrics_version` | int | Metric semantics version (`2` = per-attempt timing boundaries) |
 | `ok` | boolean | Success (true) or failure (false) |
-| `metrics.header_latency_ms` | float | Time to HTTP response headers |
-| `metrics.ttft_ms` | float | Time to first streamed token (null if failed) |
-| `metrics.total_latency_ms` | float | Request start to completion |
-| `metrics.generation_window_ms` | float | TTFT to last token (useful for throughput) |
+| `metrics.header_latency_ms` | float | Time to HTTP response headers for the final attempt only |
+| `metrics.first_sse_event_ms` | float | Time to first streamed SSE `data:` event (can be before visible text) |
+| `metrics.ttft_ms` | float | Time to first streamed token for the final attempt (null if failed) |
+| `metrics.total_latency_ms` | float | Final-attempt start to stream completion |
+| `metrics.generation_window_ms` | float | First token to stream completion (`[DONE]`) |
 | `metrics.provider_output_tokens_per_second` | float | Throughput from `completion_tokens / generation_window` |
+| `metrics.provider_output_tokens_per_second_end_to_end` | float | Throughput from `completion_tokens / total_latency` |
 | `metrics.visible_output_tokens_per_second` | float | Throughput from visible text token estimate |
+| `metrics.sse_event_count` | int | Count of streamed SSE data events parsed |
+| `metrics.content_chunk_count` | int | Count of streamed chunks that contained visible text |
+| `metrics.token_visibility_ratio` | float | `visible_output_tokens_estimate / completion_tokens` |
 | `tokens.completion_tokens` | int | Tokens generated (provider-reported) |
 | `visible_output_tokens_estimate` | int | Estimated tokens in visible text (via word regex) |
 | `response_preview` | string | First 500 characters of response |
@@ -72,11 +84,13 @@ db.inference_runs.find().sort({ timestamp: -1 }).limit(10)
 **Average metrics per model**
 ```javascript
 db.inference_runs.aggregate([
-  { $match: { ok: true } },
+  { $match: { ok: true, metrics_version: 2 } },
   { $group: {
     _id: "$model",
+    avg_first_sse_event_ms: { $avg: "$metrics.first_sse_event_ms" },
     avg_ttft_ms: { $avg: "$metrics.ttft_ms" },
     avg_visible_tps: { $avg: "$metrics.visible_output_tokens_per_second" },
+    avg_provider_tps_e2e: { $avg: "$metrics.provider_output_tokens_per_second_end_to_end" },
     count: { $sum: 1 }
   }}
 ])
@@ -89,3 +103,12 @@ db.inference_runs.aggregate([
   { $group: { _id: "$error.type", count: { $sum: 1 } } }
 ])
 ```
+
+## Indexes
+
+The monitor creates these indexes automatically:
+
+- `{ timestamp: 1 }`
+- `{ model: 1, timestamp: 1 }`
+- `{ ok: 1, timestamp: 1 }`
+- `{ metrics_version: 1, timestamp: 1 }`
