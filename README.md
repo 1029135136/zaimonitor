@@ -13,7 +13,7 @@ Runs 5 fixed prompts against z.ai, measuring:
 - **HTTP Status & Errors**: detailed error diagnostics
 
 Results are persisted as JSON documents in MongoDB Atlas (`zaimonitor.inference_runs` by default).
-Each document now includes `metrics_version=2`, where latency metrics are measured per final attempt.
+Each document now includes `metrics_version=3`, where latency metrics are measured per final attempt and include first-SSE instrumentation.
 
 ## Setup
 
@@ -42,7 +42,7 @@ Optional:
 
 ### 3. Run Manually
 ```bash
-python3 monitor_zai_inference.py
+cd script && python3 monitor_zai_inference.py
 ```
 
 Output: JSON progress events to stdout + final summary, plus documents inserted into MongoDB.
@@ -54,14 +54,14 @@ Edit your crontab:
 crontab -e
 ```
 
-Example: run every hour at :00
+Example: run every hour at :30
 ```bash
-0 * * * * cd /home/bieggerm/dev/zaimonitor && python3 monitor_zai_inference.py >> /tmp/zaimonitor.log 2>&1
+30 * * * * cd /home/bieggerm/dev/zaimonitor/script && python3 monitor_zai_inference.py >> /tmp/zaimonitor.log 2>&1
 ```
 
 Or with explicit env file:
 ```bash
-0 * * * * cd /home/bieggerm/dev/zaimonitor && /usr/bin/python3 monitor_zai_inference.py
+30 * * * * cd /home/bieggerm/dev/zaimonitor/script && /usr/bin/python3 monitor_zai_inference.py
 ```
 
 The script auto-loads `.env` from the working directory, so ensure you're in the project folder.

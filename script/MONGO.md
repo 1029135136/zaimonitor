@@ -10,7 +10,7 @@
   "run_id": "uuid",
   "request_id": "uuid",
   "timestamp": "ISO 8601 datetime",
-  "metrics_version": 2,
+  "metrics_version": 3,
   "provider": "z.ai",
   "endpoint_base": "https://api.z.ai/api/coding/paas/v4",
   "endpoint_path": "/chat/completions",
@@ -57,7 +57,7 @@
 |-------|------|-------|
 | `run_id` | string | Identifier for each script execution; groups 5 prompts together |
 | `request_id` | string | Unique ID per individual API request |
-| `metrics_version` | int | Metric semantics version (`2` = per-attempt timing boundaries) |
+| `metrics_version` | int | Metric semantics version (`3` = per-attempt timing + first SSE instrumentation) |
 | `ok` | boolean | Success (true) or failure (false) |
 | `metrics.header_latency_ms` | float | Time to HTTP response headers for the final attempt only |
 | `metrics.first_sse_event_ms` | float | Time to first streamed SSE `data:` event (can be before visible text) |
@@ -84,7 +84,7 @@ db.inference_runs.find().sort({ timestamp: -1 }).limit(10)
 **Average metrics per model**
 ```javascript
 db.inference_runs.aggregate([
-  { $match: { ok: true, metrics_version: 2 } },
+  { $match: { ok: true, metrics_version: 3 } },
   { $group: {
     _id: "$model",
     avg_first_sse_event_ms: { $avg: "$metrics.first_sse_event_ms" },

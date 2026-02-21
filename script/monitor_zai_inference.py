@@ -95,7 +95,7 @@ PROMPT_SUITE = [
     ),
 ]
 
-METRICS_VERSION = 2
+METRICS_VERSION = 3
 
 
 @dataclass
@@ -535,6 +535,17 @@ def print_summary(run_id: str, documents: List[Dict[str, Any]]) -> None:
         for doc in successes
         if doc.get("metrics", {}).get("ttft_ms") is not None
     ]
+    first_sse_values = [
+        doc["metrics"]["first_sse_event_ms"]
+        for doc in successes
+        if doc.get("metrics", {}).get("first_sse_event_ms") is not None
+    ]
+    ttft_gap_values = [
+        doc["metrics"]["ttft_ms"] - doc["metrics"]["first_sse_event_ms"]
+        for doc in successes
+        if doc.get("metrics", {}).get("ttft_ms") is not None
+        and doc.get("metrics", {}).get("first_sse_event_ms") is not None
+    ]
     tps_values = [
         doc["metrics"]["provider_output_tokens_per_second"]
         for doc in successes
@@ -558,7 +569,9 @@ def print_summary(run_id: str, documents: List[Dict[str, Any]]) -> None:
                 "total_requests": total,
                 "successes": len(successes),
                 "failures": failures,
+                "avg_first_sse_event_ms": mean(first_sse_values) if first_sse_values else None,
                 "avg_ttft_ms": mean(ttft_values) if ttft_values else None,
+                "avg_sse_to_visible_gap_ms": mean(ttft_gap_values) if ttft_gap_values else None,
                 "avg_provider_output_tokens_per_second": mean(tps_values) if tps_values else None,
                 "avg_visible_output_tokens_per_second": mean(visible_tps_values) if visible_tps_values else None,
                 "avg_total_latency_ms": mean(total_latency_values) if total_latency_values else None,
@@ -634,6 +647,7 @@ def main() -> int:
                 "ok": document.get("ok"),
                 "http_status": document.get("http_status"),
                 "header_latency_ms": document.get("metrics", {}).get("header_latency_ms"),
+                "first_sse_event_ms": document.get("metrics", {}).get("first_sse_event_ms"),
                 "ttft_ms": document.get("metrics", {}).get("ttft_ms"),
                 "total_latency_ms": document.get("metrics", {}).get("total_latency_ms"),
                 "provider_output_tokens_per_second": document.get("metrics", {}).get("provider_output_tokens_per_second"),
