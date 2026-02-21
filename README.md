@@ -13,7 +13,7 @@ Runs 5 fixed prompts against z.ai, measuring:
 - **HTTP Status & Errors**: detailed error diagnostics
 
 Results are persisted as JSON documents in MongoDB Atlas (`zaimonitor.inference_runs` by default).
-Each document now includes `metrics_version=3`, where latency metrics are measured per final attempt and include first-SSE instrumentation.
+Each document now includes `metrics_version=4`, where TTFT is first-any-token and answer completion metrics are explicit.
 
 ## Setup
 
@@ -46,6 +46,19 @@ cd script && python3 monitor_zai_inference.py
 ```
 
 Output: JSON progress events to stdout + final summary, plus documents inserted into MongoDB.
+
+### 4. Inspect Raw Stream Chunks
+To inspect chunk-level streaming behavior (including `reasoning_content`, `content`, and `tool_calls` deltas):
+
+```bash
+cd script && python3 inspect_stream_chunks.py --prompt "Explain TTFT in one sentence"
+```
+
+Probe for tool-call deltas:
+
+```bash
+cd script && python3 inspect_stream_chunks.py --with-tools --prompt "Call a tool to fetch latency policy for us-east-1"
+```
 
 ## Cron Setup
 
@@ -95,14 +108,18 @@ Each is self-contained with all needed context, so the model doesn't ask for cla
 |--------|---------|
 | `header_latency_ms` | Time to receive HTTP headers (network + server queueing) |
 | `first_sse_event_ms` | Time to first streamed `data:` event (even if no visible text yet) |
-| `ttft_ms` | Time to first visible token chunk |
+| `first_reasoning_token_ms` | Time to first streamed `reasoning_content` chunk |
+| `first_answer_token_ms` | Time to first streamed answer `content` chunk |
+| `ttft_ms` | Time to first streamed provider token (`reasoning_content` or `content`) |
+| `thinking_window_ms` | Time from first reasoning chunk to first answer chunk |
+| `time_to_completed_answer_ms` | Request start to completed answer stream (`[DONE]`) |
 | `total_latency_ms` | Total request duration (everything from start to end) |
-| `generation_window_ms` | Time from first to last token (ttft_ms to finish) |
+| `generation_window_ms` | Time from first answer token to completion |
 | `provider_output_tokens_per_second` | Provider-reported completion_tokens ÷ generation window |
 | `provider_output_tokens_per_second_end_to_end` | Provider-reported completion_tokens ÷ total_latency_ms |
 | `visible_output_tokens_per_second` | Estimated tokens in actual returned text ÷ generation window |
 
-Provider-reported TPS can be much higher than visible TPS when the provider token count includes non-visible/internal tokens.
+Provider-reported TPS can be much higher than visible TPS when the provider token count includes non-visible/internal tokens (for example streamed reasoning tokens).
 
 ## Metric Semantics
 
@@ -129,9 +146,10 @@ Provider-reported TPS can be much higher than visible TPS when the provider toke
 - Check credentials if Atlas username/password is in the URI.
 
 **High TTFT or total latency:**
-- Use `header_latency_ms` to see if it's network or model delay.
+- Use `header_latency_ms` to separate network queueing from model streaming delay.
 - If `header_latency_ms` is high, it's queueing at z.ai.
-- If `header_latency_ms` is low but `ttft_ms` is high, it's model thinking time.
+- If `header_latency_ms` is low but `ttft_ms` is high, model token emission is delayed.
+- Compare `first_reasoning_token_ms` vs `first_answer_token_ms` to see reasoning-vs-answer gap.
 
 ## License
 

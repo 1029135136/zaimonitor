@@ -73,7 +73,9 @@ class MonitorMetricTests(unittest.TestCase):
         self.assertEqual(result["attempt"], 2)
         self.assertAlmostEqual(result["header_latency_ms"], 1000.0)
         self.assertAlmostEqual(result["first_sse_event_ms"], 2000.0)
+        self.assertAlmostEqual(result["first_answer_token_ms"], 2000.0)
         self.assertAlmostEqual(result["ttft_ms"], 2000.0)
+        self.assertAlmostEqual(result["time_to_completed_answer_ms"], 4000.0)
         self.assertAlmostEqual(result["total_latency_ms"], 4000.0)
         self.assertAlmostEqual(result["generation_window_ms"], 2000.0)
         self.assertAlmostEqual(result["output_tokens_per_second"], 2.0)
@@ -117,12 +119,57 @@ class MonitorMetricTests(unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertAlmostEqual(result["first_sse_event_ms"], 2000.0)
+        self.assertAlmostEqual(result["first_answer_token_ms"], 2000.0)
         self.assertAlmostEqual(result["ttft_ms"], 2000.0)
+        self.assertAlmostEqual(result["time_to_completed_answer_ms"], 6000.0)
         self.assertAlmostEqual(result["generation_window_ms"], 4000.0)
         self.assertAlmostEqual(result["output_tokens_per_second"], 2.0)
         self.assertAlmostEqual(result["output_tokens_per_second_end_to_end"], 1.3333333333)
         self.assertEqual(result["sse_event_count"], 2)
         self.assertEqual(result["content_chunk_count"], 1)
+
+    def test_reasoning_before_answer_sets_ttft_to_first_reasoning(self):
+        first_event = {
+            "choices": [{"delta": {"reasoning_content": "thinking..."}, "finish_reason": None}],
+        }
+        second_event = {
+            "usage": {"prompt_tokens": 8, "completion_tokens": 10, "total_tokens": 18},
+            "choices": [{"delta": {"content": "final answer"}, "finish_reason": "stop"}],
+        }
+        response = FakeResponse(
+            status_code=200,
+            lines=[
+                f"data: {json.dumps(first_event)}",
+                f"data: {json.dumps(second_event)}",
+                "data: [DONE]",
+            ],
+        )
+
+        with (
+            patch.object(monitor.requests, "post", return_value=response),
+            patch.object(monitor.time, "monotonic", side_effect=[29.0, 30.0, 31.0, 32.0, 33.0, 34.0, 38.0]),
+            patch.object(
+                monitor,
+                "now_utc",
+                side_effect=[
+                    datetime(2026, 2, 21, 0, 0, tzinfo=timezone.utc),
+                    datetime(2026, 2, 21, 0, 1, tzinfo=timezone.utc),
+                    datetime(2026, 2, 21, 0, 2, tzinfo=timezone.utc),
+                    datetime(2026, 2, 21, 0, 3, tzinfo=timezone.utc),
+                    datetime(2026, 2, 21, 0, 4, tzinfo=timezone.utc),
+                ],
+            ),
+        ):
+            result = monitor.stream_chat_completion(self.cfg, "hello", "req-3")
+
+        self.assertTrue(result["ok"])
+        self.assertAlmostEqual(result["first_sse_event_ms"], 2000.0)
+        self.assertAlmostEqual(result["first_reasoning_token_ms"], 3000.0)
+        self.assertAlmostEqual(result["first_answer_token_ms"], 4000.0)
+        self.assertAlmostEqual(result["ttft_ms"], 3000.0)
+        self.assertAlmostEqual(result["thinking_window_ms"], 1000.0)
+        self.assertAlmostEqual(result["time_to_completed_answer_ms"], 8000.0)
+        self.assertAlmostEqual(result["generation_window_ms"], 4000.0)
 
 
 if __name__ == "__main__":

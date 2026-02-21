@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { OverviewFilters } from "@/components/overview-filters";
 import { OverviewHeader } from "@/components/overview-header";
 import { OverviewKpis } from "@/components/overview-kpis";
+import { OverviewAdditionalMetrics } from "@/components/overview-additional-metrics";
 import { OverviewNotes } from "@/components/overview-notes";
 import { OverviewTrend } from "@/components/overview-trend";
 import { buildLinePath } from "@/lib/overview-chart";
@@ -90,13 +91,13 @@ export default function Home() {
 
   const kpis: KpiItem[] = [
     {
-      label: "TTFT",
+      label: "Avg TTFT",
       value: msToSecondsLabel(data?.metrics.avg_ttft_ms ?? null),
       delta: `avg over ${hours}h`,
       tone: "bg-[color:var(--accent-sky)]/55",
     },
     {
-      label: "Visible TPS",
+      label: "Avg TPS",
       value: data?.metrics.avg_visible_tps != null ? data.metrics.avg_visible_tps.toFixed(2) : "-",
       delta:
         data?.metrics.avg_provider_tps != null
@@ -112,7 +113,7 @@ export default function Home() {
       tone: "bg-[color:var(--accent-gold)]/60",
     },
     {
-      label: "p95 Total",
+      label: "p95 Latency",
       value: msToSecondsLabel(data?.metrics.p95_total_latency_ms ?? null),
       delta: data?.totals.requests != null ? `from ${data.totals.requests} requests` : "-",
       tone: "bg-[color:var(--accent-rose)]/58",
@@ -144,6 +145,8 @@ export default function Home() {
         <OverviewTrend hours={hours} path={trendPath} />
         <OverviewNotes model={model} data={data} />
       </section>
+
+      <OverviewAdditionalMetrics data={data} />
     </div>
   );
 }
