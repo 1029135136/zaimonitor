@@ -226,26 +226,19 @@ export function OverviewTrend({
         })}
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-4 text-xs">
+      <div className="mb-3 flex flex-wrap items-center gap-6 text-xs">
         {MODELS.map((model) => {
           const colorInfo = MODEL_COLORS[model];
           return (
-            <div key={model} className="flex items-center gap-3">
-              <span className="inline-flex items-center gap-2 text-[color:var(--card-foreground)]">
-                <span className="h-2 w-4 rounded-full" style={{ backgroundColor: colorInfo.solid }} aria-hidden />
-                <span className="font-medium">{colorInfo.label}</span>
-              </span>
-              <span className="inline-flex items-center gap-1 text-[color:var(--muted-foreground)]">
-                <span className="h-0.5 w-4 bg-current" aria-hidden />
-                Coding
-              </span>
-              <span className="inline-flex items-center gap-1 text-[color:var(--muted-foreground)]">
-                <span className="h-0.5 w-4 border-b border-dashed border-current" aria-hidden />
-                Standard
-              </span>
-            </div>
+            <span key={model} className="inline-flex items-center gap-2 font-medium text-[color:var(--card-foreground)]">
+              <span className="h-2 w-4 rounded-full" style={{ backgroundColor: colorInfo.solid }} aria-hidden />
+              {colorInfo.label}
+            </span>
           );
         })}
+        <span className="text-[color:var(--muted-foreground)]">
+          Solid = Coding Plan · Dashed = Standard API
+        </span>
       </div>
 
       <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/50 p-3 md:p-5">
