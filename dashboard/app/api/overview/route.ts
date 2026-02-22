@@ -1,30 +1,27 @@
-import { execFile } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
-import { promisify } from "node:util";
 import { NextResponse } from "next/server";
-
-const execFileAsync = promisify(execFile);
-const ENDPOINT_FAMILIES = new Set(["coding_plan", "official_api"]);
+import { queryOverview, OverviewQueryParams } from "@/lib/overview-query";
 
 export const runtime = "nodejs";
 
-function parseHours(raw: string | null): string {
-  if (!raw) return "24";
+function parseHours(raw: string | null): number {
+  if (!raw) return 24;
   const normalized = raw.trim();
-  if (normalized === "24" || normalized === "168") return normalized;
-  return "24";
+  if (normalized === "24" || normalized === "168") {
+    return Number(normalized);
+  }
+  return 24;
 }
 
-function parseModel(raw: string | null): string {
-  if (!raw) return "";
-  return raw.replace(/[^\w\-./]/g, "").slice(0, 120);
+function parseModel(raw: string | null): string | undefined {
+  if (!raw) return undefined;
+  const cleaned = raw.replace(/[^\w\-./]/g, "").slice(0, 120);
+  return cleaned || undefined;
 }
 
 function parseEndpointFamily(raw: string | null): string {
   if (!raw) return "coding_plan";
   const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
-  if (ENDPOINT_FAMILIES.has(normalized)) {
+  if (normalized === "coding_plan" || normalized === "official_api") {
     return normalized;
   }
   return "coding_plan";
@@ -37,26 +34,18 @@ export async function GET(request: Request) {
     const model = parseModel(url.searchParams.get("model"));
     const endpointFamily = parseEndpointFamily(url.searchParams.get("endpoint_family"));
 
-    const root = path.resolve(process.cwd(), "..");
-    const scriptPath = path.join(process.cwd(), "lib", "overview_query.py");
-    const venvPython = path.join(root, "script", ".venv", "bin", "python");
-    const pythonBin = process.env.DASHBOARD_PYTHON_BIN || (fs.existsSync(venvPython) ? venvPython : "python3");
-
-    const args = [scriptPath, "--hours", hours, "--endpoint-family", endpointFamily];
-    if (model) {
-      args.push("--model", model);
+    const mongoUri = process.env.MONGODB_URI;
+    if (!mongoUri) {
+      return NextResponse.json({ error: "MONGODB_URI is required" }, { status: 500 });
     }
 
-    const { stdout } = await execFileAsync(pythonBin, args, {
-      env: process.env,
-      timeout: 15_000,
-      maxBuffer: 1024 * 1024,
-    });
+    const params: OverviewQueryParams = {
+      hours,
+      model,
+      endpointFamily,
+    };
 
-    const payload = JSON.parse(stdout);
-    if (payload?.error) {
-      return NextResponse.json(payload, { status: 500 });
-    }
+    const payload = await queryOverview(mongoUri, params);
 
     return NextResponse.json(payload, {
       headers: {

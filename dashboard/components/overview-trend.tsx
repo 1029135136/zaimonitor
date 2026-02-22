@@ -225,12 +225,12 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
         ) : (
           <>
             <svg viewBox="0 0 660 230" className="h-56 w-full" role="img" aria-label={`${activeOption.label} trend`}>
-              <line x1="16" y1={chart.yTop} x2="644" y2={chart.yTop} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
-              <line x1="16" y1={(chart.yTop + chart.yBottom) / 2} x2="644" y2={(chart.yTop + chart.yBottom) / 2} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
-              <line x1="16" y1={chart.yBottom} x2="644" y2={chart.yBottom} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
+              <line x1="16" y1={chart.yTop!} x2="644" y2={chart.yTop!} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
+              <line x1="16" y1={(chart.yTop! + chart.yBottom!) / 2} x2="644" y2={(chart.yTop! + chart.yBottom!) / 2} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
+              <line x1="16" y1={chart.yBottom!} x2="644" y2={chart.yBottom!} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
               {chart.xTicks.map((tick) => (
                 <g key={tick.x.toFixed(1)}>
-                  <line x1={tick.x} y1={chart.yTop} x2={tick.x} y2={chart.yBottom} stroke="var(--border)" strokeDasharray="3 6" strokeWidth="1" />
+                  <line x1={tick.x} y1={chart.yTop!} x2={tick.x} y2={chart.yBottom!} stroke="var(--border)" strokeDasharray="3 6" strokeWidth="1" />
                   <text x={tick.x} y="214" textAnchor="middle" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
                     {tick.label}
                   </text>
@@ -239,18 +239,18 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
               {chart.pathSegments.map((segment) => (
                 <path key={segment} d={segment} fill="none" stroke={activeOption.stroke} strokeWidth="3" strokeLinecap="round" />
               ))}
-              <text x="648" y={chart.yTop + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
+              <text x="648" y={chart.yTop! + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
                 {formatNumber(chart.max)}
               </text>
               <text
                 x="648"
-                y={(chart.yTop + chart.yBottom) / 2 + 4}
+                y={(chart.yTop! + chart.yBottom!) / 2 + 4}
                 textAnchor="end"
                 className="fill-[color:var(--muted-foreground)] font-mono text-[10px]"
               >
                 {formatNumber(chart.avg)}
               </text>
-              <text x="648" y={chart.yBottom + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
+              <text x="648" y={chart.yBottom! + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
                 {formatNumber(chart.min)}
               </text>
             </svg>
