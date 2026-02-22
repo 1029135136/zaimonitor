@@ -48,9 +48,6 @@ export type OverviewResponse = {
   selected_model: string | null;
   using_legacy_metrics: boolean;
   latest_document_timestamp: string | null;
-  schedule: {
-    next_run_utc: string;
-  };
   generated_at: string;
 };
 

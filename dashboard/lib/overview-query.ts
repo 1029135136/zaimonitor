@@ -109,22 +109,6 @@ function toIso(value: Date | null | undefined): string | null {
   return date.toISOString();
 }
 
-function asUtc(value: Date): Date {
-  const date = new Date(value);
-  return new Date(date.getTime() + (date.getTimezoneOffset() * 60000));
-}
-
-function nextThirtyMark(now: Date): Date {
-  const date = asUtc(now);
-  if (date.getUTCMinutes() < 30) {
-    date.setUTCMinutes(30, 0, 0);
-    return date;
-  }
-  date.setUTCHours(date.getUTCHours() + 1);
-  date.setUTCMinutes(30, 0, 0);
-  return date;
-}
-
 function normalizeEndpointFamily(raw: string): string {
   const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
   if (ENDPOINT_FAMILIES.includes(normalized)) {
@@ -308,9 +292,6 @@ export interface OverviewResult {
   selected_model: string | null;
   using_legacy_metrics: boolean;
   latest_document_timestamp: string | null;
-  schedule: {
-    next_run_utc: string | null;
-  };
   generated_at: string | null;
 }
 
@@ -586,7 +567,6 @@ export async function queryOverview(
 
   const latestTs = docs[docs.length - 1]?.timestamp || trendDocs[trendDocs.length - 1]?.timestamp;
 
-  const nextRun = nextThirtyMark(nowUtc);
   const p95OutputTps = percentile(outputTpsValues, 0.95);
   const p95Ttft = percentile(ttftValues, 0.95);
   const p95TotalLatency = percentile(totalLatencyValues, 0.95);
@@ -640,9 +620,6 @@ export async function queryOverview(
     selected_model: params.model || null,
     using_legacy_metrics: usingLegacyMetrics,
     latest_document_timestamp: toIso(latestTs instanceof Date ? latestTs : null),
-    schedule: {
-      next_run_utc: toIso(nextRun),
-    },
     generated_at: toIso(new Date()),
   };
 }

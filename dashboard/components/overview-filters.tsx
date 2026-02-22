@@ -60,7 +60,6 @@ export function OverviewFilters({
 }: OverviewFiltersProps) {
   const availableModels = MODEL_OPTIONS.filter((option) => models.includes(option.value));
   const modelOptions = availableModels.length ? availableModels : MODEL_OPTIONS;
-  const selectedWindowLabel = WINDOW_OPTIONS.find((option) => option.value === hours)?.label ?? `${hours}h`;
   const selectedModelLabel = modelOptions.find((option) => option.value === model)?.label ?? model;
 
   return (
