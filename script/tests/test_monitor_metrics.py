@@ -240,12 +240,12 @@ class MonitorMetricTests(unittest.TestCase):
             "request_id": "req-4",
         }
 
-        doc = monitor.build_document(cfg, result)
+        doc = monitor.build_document(cfg, "run-123", result)
         self.assertEqual(doc["endpoint_family"], monitor.ENDPOINT_FAMILY_OFFICIAL_API)
         self.assertEqual(doc["endpoint_base"], "https://api.z.ai/api/paas/v4")
+        self.assertEqual(doc["run_id"], "run-123")
         self.assertEqual(doc["tokens"]["completion_tokens"], 5)
         self.assertEqual(doc["tokens"]["cached_prompt_tokens"], 2)
-        self.assertNotIn("run_id", doc)
         self.assertNotIn("request_id", doc)
         self.assertNotIn("provider", doc)
         self.assertNotIn("response_preview", doc)

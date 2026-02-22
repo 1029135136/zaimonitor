@@ -538,6 +538,7 @@ def ensure_collection_indexes(collection: Collection) -> None:
                 name="endpoint_family_model_timestamp_asc",
             ),
             IndexModel([("ok", ASCENDING), ("timestamp", ASCENDING)], name="ok_timestamp_asc"),
+            IndexModel([("run_id", ASCENDING), ("timestamp", ASCENDING)], name="run_id_timestamp_asc"),
             IndexModel(
                 [("metrics_version", ASCENDING), ("timestamp", ASCENDING)],
                 name="metrics_version_timestamp_asc",
@@ -548,6 +549,7 @@ def ensure_collection_indexes(collection: Collection) -> None:
 
 def build_document(
     cfg: Config,
+    run_id: str,
     result: Dict[str, Any],
 ) -> Dict[str, Any]:
     usage = result.get("usage") or {}
@@ -565,6 +567,7 @@ def build_document(
     return {
         "timestamp": now_utc(),
         "metrics_version": METRICS_VERSION,
+        "run_id": run_id,
         "endpoint_family": cfg.zai_endpoint_family,
         "endpoint_base": cfg.zai_base_url,
         "model": cfg.zai_model,
@@ -742,7 +745,7 @@ def main() -> int:
         )
 
         result = stream_chat_completion(cfg=cfg, prompt=prompt, request_id=request_id)
-        document = build_document(cfg, result)
+        document = build_document(cfg, run_id, result)
         documents.append(document)
 
         print_progress(

@@ -34,6 +34,7 @@ interface ErrorDoc {
 interface InferenceDoc extends Document {
   timestamp: Date;
   metrics_version?: number;
+  run_id?: string;
   ok: boolean;
   model?: string;
   endpoint_family?: string;
@@ -52,6 +53,14 @@ interface BucketData {
   visible_count: number;
   provider_sum: number;
   provider_count: number;
+}
+
+interface RunTrendPoint {
+  timestamp: Date;
+  output_tps?: number;
+  ttft_ms?: number;
+  visible_tps?: number;
+  provider_tps?: number;
 }
 
 type EndpointFamily = typeof ENDPOINT_FAMILY_CODING_PLAN | typeof ENDPOINT_FAMILY_OFFICIAL_API;
@@ -243,6 +252,79 @@ function collectTokenValues(docs: InferenceDoc[], key: keyof Tokens): number[] {
   return values;
 }
 
+function initBucketData(): BucketData {
+  return {
+    output_sum: 0,
+    output_count: 0,
+    ttft_sum: 0,
+    ttft_count: 0,
+    visible_sum: 0,
+    visible_count: 0,
+    provider_sum: 0,
+    provider_count: 0,
+  };
+}
+
+function buildRunTrendPoints(docs: InferenceDoc[]): RunTrendPoint[] {
+  const runBuckets = new Map<string, { timestamp: Date; data: BucketData }>();
+
+  for (const [index, doc] of docs.entries()) {
+    const ts = doc.timestamp;
+    if (!(ts instanceof Date) || isNaN(ts.getTime())) continue;
+
+    const rawRunId = typeof doc.run_id === "string" ? doc.run_id.trim() : "";
+    const runKey = rawRunId.length > 0 ? rawRunId : `legacy:${index}`;
+    const existing = runBuckets.get(runKey) || { timestamp: new Date(ts), data: initBucketData() };
+
+    if (ts.getTime() > existing.timestamp.getTime()) {
+      existing.timestamp = new Date(ts);
+    }
+
+    if (doc.ok) {
+      const outputTps = extractOutputTpsPostTtft(doc);
+      if (outputTps !== null) {
+        existing.data.output_sum += outputTps;
+        existing.data.output_count += 1;
+      }
+
+      const ttftRaw = doc.metrics?.ttft_ms;
+      const ttft = ttftRaw === undefined || ttftRaw === null ? null : Number(ttftRaw);
+      if (ttft !== null && !isNaN(ttft)) {
+        existing.data.ttft_sum += ttft;
+        existing.data.ttft_count += 1;
+      }
+
+      const visibleTps = extractStableTps(doc, "visible_output_tokens_per_second");
+      if (visibleTps !== null) {
+        existing.data.visible_sum += visibleTps;
+        existing.data.visible_count += 1;
+      }
+
+      const providerTps = extractStableTps(doc, "provider_output_tokens_per_second");
+      if (providerTps !== null) {
+        existing.data.provider_sum += providerTps;
+        existing.data.provider_count += 1;
+      }
+    }
+
+    runBuckets.set(runKey, existing);
+  }
+
+  const runTrendPoints: RunTrendPoint[] = [];
+  for (const { timestamp, data } of runBuckets.values()) {
+    runTrendPoints.push({
+      timestamp,
+      output_tps: data.output_count > 0 ? data.output_sum / data.output_count : undefined,
+      ttft_ms: data.ttft_count > 0 ? data.ttft_sum / data.ttft_count : undefined,
+      visible_tps: data.visible_count > 0 ? data.visible_sum / data.visible_count : undefined,
+      provider_tps: data.provider_count > 0 ? data.provider_sum / data.provider_count : undefined,
+    });
+  }
+
+  runTrendPoints.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  return runTrendPoints;
+}
+
 export interface OverviewQueryParams {
   hours: number;
   model?: string;
@@ -361,6 +443,7 @@ export async function queryOverview(
     _id: 0,
     timestamp: 1,
     metrics_version: 1,
+    run_id: 1,
     ok: 1,
     model: 1,
     endpoint_family: 1,
@@ -409,6 +492,7 @@ export async function queryOverview(
   const successDocs = docs.filter((d) => d.ok);
   const failureDocs = docs.filter((d) => !d.ok);
   const trendSuccessDocs = trendDocs.filter((d) => d.ok);
+  const runTrendPoints = buildRunTrendPoints(trendDocs);
 
   const ttftValues = collectMetricValues(successDocs, "ttft_ms");
   const firstSseValues = collectMetricValues(successDocs, "first_sse_event_ms");
@@ -439,45 +523,30 @@ export async function queryOverview(
   const cachedPromptTokenValues = collectTokenValues(docs, "cached_prompt_tokens");
 
   const buckets = new Map<string, BucketData>();
-  for (const d of trendSuccessDocs) {
-    const outputTps = extractOutputTpsPostTtft(d);
-    const ttftRaw = d.metrics?.ttft_ms;
-    const ttft = ttftRaw === undefined || ttftRaw === null ? null : Number(ttftRaw);
-    const visibleTps = extractStableTps(d, "visible_output_tokens_per_second");
-    const providerTps = extractStableTps(d, "provider_output_tokens_per_second");
-    const ts = d.timestamp;
-    if (!(ts instanceof Date)) continue;
+  for (const point of runTrendPoints) {
+    const ts = point.timestamp;
 
     const bucket = new Date(
       Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate(), ts.getUTCHours(), 0, 0, 0),
     );
     const key = bucket.toISOString();
 
-    const existing = buckets.get(key) || {
-      output_sum: 0,
-      output_count: 0,
-      ttft_sum: 0,
-      ttft_count: 0,
-      visible_sum: 0,
-      visible_count: 0,
-      provider_sum: 0,
-      provider_count: 0,
-    };
+    const existing = buckets.get(key) || initBucketData();
 
-    if (outputTps !== null) {
-      existing.output_sum += outputTps;
+    if (point.output_tps !== undefined && Number.isFinite(point.output_tps)) {
+      existing.output_sum += point.output_tps;
       existing.output_count += 1;
     }
-    if (ttft !== null && !isNaN(ttft)) {
-      existing.ttft_sum += ttft;
+    if (point.ttft_ms !== undefined && Number.isFinite(point.ttft_ms)) {
+      existing.ttft_sum += point.ttft_ms;
       existing.ttft_count += 1;
     }
-    if (visibleTps !== null) {
-      existing.visible_sum += visibleTps;
+    if (point.visible_tps !== undefined && Number.isFinite(point.visible_tps)) {
+      existing.visible_sum += point.visible_tps;
       existing.visible_count += 1;
     }
-    if (providerTps !== null) {
-      existing.provider_sum += providerTps;
+    if (point.provider_tps !== undefined && Number.isFinite(point.provider_tps)) {
+      existing.provider_sum += point.provider_tps;
       existing.provider_count += 1;
     }
 

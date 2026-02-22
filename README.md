@@ -7,6 +7,8 @@ Lightweight benchmarking + dashboard for z.ai inference performance.
 - `dashboard/` is a Next.js + shadcn UI for at-a-glance KPIs and trends.
 - Metric schema and query examples: `script/MONGO.md`.
 
+Each collector invocation writes three prompt documents under a shared `run_id` so the dashboard trend can plot run-level averages.
+
 ## Endpoint Families
 - `coding_plan`: `https://api.z.ai/api/coding/paas/v4`
 - `official_api`: `https://api.z.ai/api/paas/v4` (`/chat/completions` path is appended by the collector)

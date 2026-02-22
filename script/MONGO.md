@@ -9,6 +9,7 @@
 {
   "timestamp": "ISO 8601 datetime",
   "metrics_version": 4,
+  "run_id": "UUID shared by all prompts in one benchmark run",
   "endpoint_family": "coding_plan",
   "endpoint_base": "https://api.z.ai/api/coding/paas/v4",
   "model": "glm-5",
@@ -42,6 +43,7 @@
 | Field | Type | Notes |
 |-------|------|-------|
 | `metrics_version` | int | Metric semantics version (`4` = TTFT is first any token + explicit answer-completion metrics) |
+| `run_id` | string | Shared ID across all prompts from one script execution (used for run-level trend points) |
 | `endpoint_family` | string | Endpoint grouping used for dashboard split (`coding_plan` or `official_api`) |
 | `endpoint_base` | string | Concrete base URL used for this request family |
 | `ok` | boolean | Success (true) or failure (false) |
@@ -125,4 +127,31 @@ The monitor creates these indexes automatically:
 - `{ endpoint_family: 1, timestamp: 1 }`
 - `{ endpoint_family: 1, model: 1, timestamp: 1 }`
 - `{ ok: 1, timestamp: 1 }`
+- `{ run_id: 1, timestamp: 1 }`
 - `{ metrics_version: 1, timestamp: 1 }`
+
+## Legacy `run_id` Backfill
+
+For older docs without `run_id`, use:
+
+```bash
+cd script
+python3 backfill_run_ids.py
+```
+
+Dry-run prints:
+- how many legacy docs were found
+- how many inferred run clusters were created
+- cluster-size histogram (you should mostly see size `3`)
+- preview of generated synthetic `run_id` values
+
+If the dry-run looks right, apply updates:
+
+```bash
+cd script
+python3 backfill_run_ids.py --apply
+```
+
+Optional tuning:
+- `--expected-prompts 3` (default)
+- `--max-gap-seconds 600` (default 10 minutes between docs in same inferred run)
