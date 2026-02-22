@@ -17,25 +17,71 @@ type KpiCardProps = {
   comparisonData: Record<string, ModelMetrics>;
 };
 
-function KpiCard({ label, delta, tone, unit, formatValue, data, comparisonData }: KpiCardProps) {
+function KpiCardPrimary({ label, delta, tone, unit, formatValue, data, comparisonData }: KpiCardProps) {
   return (
     <article className="paper-panel paper-noise fade-up rounded-2xl p-5">
       <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${tone}`}>
         {label}
       </div>
+      
+      <div className="grid grid-cols-[auto_repeat(2,1fr)] gap-x-6 gap-y-2">
+        <div />
+        {MODELS.map((model) => (
+          <p key={model} className={`font-display text-sm font-medium text-[color:var(--card-foreground)] ${model === "glm-5" ? "bg-gradient-to-r from-[color:var(--accent-gold)]/40 to-[color:var(--accent-mint)]/30 px-2 py-0.5 rounded-md -mx-2" : ""}`}>
+            {MODEL_LABELS[model]}
+          </p>
+        ))}
+        
+        <p className="font-display text-sm text-[color:var(--card-foreground)] pt-1">Coding Plan</p>
+        {MODELS.map((model) => {
+          const value = formatValue(data[model] || {});
+          return (
+            <p key={model} className="font-display text-2xl text-[color:var(--card-foreground)]">
+              {value ?? "—"}
+              {unit && value && <span className="text-base ml-1 text-[color:var(--muted-foreground)]">{unit}</span>}
+            </p>
+          );
+        })}
+        
+        <p className="font-mono text-sm text-[color:var(--muted-foreground)] pt-3">Standard</p>
+        {MODELS.map((model) => {
+          const value = formatValue(comparisonData[model] || {});
+          return (
+            <p key={model} className="font-mono text-base text-[color:var(--muted-foreground)]">
+              {value ?? "—"}
+              {unit && value && <span className="text-xs ml-1">{unit}</span>}
+            </p>
+          );
+        })}
+      </div>
+      
+      {delta && (
+        <p className="mt-3 font-mono text-xs text-[color:var(--muted-foreground)]">{delta}</p>
+      )}
+    </article>
+  );
+}
+
+function KpiCardSecondary({ label, delta, tone, unit, formatValue, data, comparisonData }: KpiCardProps) {
+  return (
+    <article className="paper-panel paper-noise fade-up rounded-2xl p-5">
+      <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${tone}`}>
+        {label}
+      </div>
+      
       <div className="grid grid-cols-2 gap-6">
         {MODELS.map((model) => {
           const codingValue = formatValue(data[model] || {});
           const stdValue = formatValue(comparisonData[model] || {});
           return (
             <div key={model} className="space-y-1">
-              <p className="font-display text-sm font-medium text-[color:var(--card-foreground)]">
+              <p className={`font-display text-sm font-medium text-[color:var(--card-foreground)] ${model === "glm-5" ? "bg-gradient-to-r from-[color:var(--accent-gold)]/40 to-[color:var(--accent-mint)]/30 px-2 py-0.5 rounded-md -mx-2" : ""}`}>
                 {MODEL_LABELS[model]}
               </p>
-              <div className="space-y-0.5">
-                <p className="font-display text-3xl text-[color:var(--card-foreground)]">
+              <div className="flex flex-col gap-0.5">
+                <p className="font-display text-2xl text-[color:var(--card-foreground)]">
                   {codingValue ?? "—"}
-                  {unit && codingValue && <span className="text-lg ml-1 text-[color:var(--muted-foreground)]">{unit}</span>}
+                  {unit && codingValue && <span className="text-base ml-1 text-[color:var(--muted-foreground)]">{unit}</span>}
                 </p>
                 <p className="font-mono text-sm text-[color:var(--muted-foreground)]">
                   {stdValue ?? "—"}
@@ -46,6 +92,7 @@ function KpiCard({ label, delta, tone, unit, formatValue, data, comparisonData }
           );
         })}
       </div>
+      
       {delta && (
         <p className="mt-3 font-mono text-xs text-[color:var(--muted-foreground)]">{delta}</p>
       )}
@@ -76,21 +123,21 @@ function formatPercent(value: number | null | undefined): string | null {
 export function OverviewKpisPrimary({ data, comparisonData }: OverviewKpisProps) {
   return (
     <section className="grid gap-4 sm:grid-cols-2">
-      <KpiCard
-        label="Output TPS"
-        delta="tokens/sec post-TTFT"
+      <KpiCardPrimary
+        label="Tokens per Second"
+        delta="post time-to-first-token"
         tone="bg-[color:var(--accent-mint)]/60"
         unit="tps"
-        formatValue={(m) => formatRate(m.avg_output_tps)}
+        formatValue={(m: ModelMetrics) => formatRate(m.avg_output_tps)}
         data={data}
         comparisonData={comparisonData}
       />
-      <KpiCard
-        label="Avg TTFT"
+      <KpiCardPrimary
+        label="Time to First Token"
         delta="rolling last 24h"
         tone="bg-[color:var(--accent-sky)]/55"
         unit="s"
-        formatValue={(m) => msToSeconds(m.avg_ttft_ms)}
+        formatValue={(m: ModelMetrics) => msToSeconds(m.avg_ttft_ms)}
         data={data}
         comparisonData={comparisonData}
       />
@@ -101,27 +148,27 @@ export function OverviewKpisPrimary({ data, comparisonData }: OverviewKpisProps)
 export function OverviewKpisSecondary({ data, comparisonData }: OverviewKpisProps) {
   return (
     <section className="grid gap-4 sm:grid-cols-3">
-      <KpiCard
+      <KpiCardSecondary
         label="Success Rate"
         tone="bg-[color:var(--accent-gold)]/60"
-        formatValue={(m) => formatPercent(m.success_rate_percent)}
+        formatValue={(m: ModelMetrics) => formatPercent(m.success_rate_percent)}
         data={data}
         comparisonData={comparisonData}
       />
-      <KpiCard
-        label="p95 TTFT"
+      <KpiCardSecondary
+        label="p95 Time to First Token"
         tone="bg-[color:var(--accent-rose)]/58"
         unit="s"
-        formatValue={(m) => msToSeconds(m.p95_ttft_ms)}
+        formatValue={(m: ModelMetrics) => msToSeconds(m.p95_ttft_ms)}
         data={data}
         comparisonData={comparisonData}
       />
-      <KpiCard
-        label="Avg E2E TPS"
-        delta="compl_tokens / total_latency"
+      <KpiCardSecondary
+        label="End-to-End Throughput"
+        delta="completion tokens / total latency"
         tone="bg-[color:var(--accent-sky)]/45"
         unit="tps"
-        formatValue={(m) => formatRate(m.avg_provider_tps_end_to_end)}
+        formatValue={(m: ModelMetrics) => formatRate(m.avg_provider_tps_end_to_end)}
         data={data}
         comparisonData={comparisonData}
       />

@@ -1,94 +1,99 @@
-import { useMemo, useState } from "react";
-import type { TrendByModel, TrendPoint } from "@/lib/overview-types";
+"use client"
 
-type TrendMetricKey = "output_tps" | "ttft_ms";
+import { useEffect, useMemo, useState } from "react"
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
+import type { TrendByModel, TrendPoint } from "@/lib/overview-types"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
+
+type TrendMetricKey = "output_tps" | "ttft_ms"
 
 type OverviewTrendProps = {
-  hours: string;
-  trendByModel: TrendByModel;
-  comparisonTrendByModel: TrendByModel;
-  windowStart: string | null;
-  windowEnd: string | null;
-};
+  hours: string
+  trendByModel: TrendByModel
+  comparisonTrendByModel: TrendByModel
+  windowStart: string | null
+  windowEnd: string | null
+}
 
-const MODELS = ["glm-4.7", "glm-5"] as const;
-type ModelKey = (typeof MODELS)[number];
+const MODELS = ["glm-5", "glm-4.7"] as const
+type ModelKey = (typeof MODELS)[number]
 
-const MODEL_COLORS: Record<ModelKey, { solid: string; label: string }> = {
-  "glm-4.7": { solid: "var(--chart-1)", label: "GLM-4.7" },
-  "glm-5": { solid: "var(--chart-2)", label: "GLM-5" },
-};
+const MODEL_COLORS: Record<ModelKey, string> = {
+  "glm-4.7": "var(--chart-1)",
+  "glm-5": "var(--chart-2)",
+}
+
+const MODEL_LABELS: Record<ModelKey, string> = {
+  "glm-4.7": "GLM-4.7",
+  "glm-5": "GLM-5",
+}
 
 const METRIC_OPTIONS: { key: TrendMetricKey; label: string }[] = [
-  { key: "output_tps", label: "Output TPS" },
-  { key: "ttft_ms", label: "TTFT" },
-];
-
-function formatAxisValue(metric: TrendMetricKey, value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "-";
-  if (metric === "ttft_ms") return `${(value / 1000).toFixed(2)}s`;
-  return value.toFixed(2);
-}
+  { key: "output_tps", label: "Tokens/sec" },
+  { key: "ttft_ms", label: "Time to First Token" },
+]
 
 function formatMetricValue(metric: TrendMetricKey, value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "-";
-  if (metric === "ttft_ms") return `${(value / 1000).toFixed(2)}s`;
-  return value.toFixed(2);
-}
-
-type SeriesStats = {
-  min: number | null;
-  max: number | null;
-  avg: number | null;
-  latest: number | null;
-  changePercent: number | null;
-};
-
-function computeSeriesStats(values: number[]): SeriesStats {
-  if (!values.length) {
-    return { min: null, max: null, avg: null, latest: null, changePercent: null };
-  }
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const avg = values.reduce((sum, v) => sum + v, 0) / values.length;
-  const latest = values[values.length - 1];
-  const first = values[0];
-  return {
-    min,
-    max,
-    avg,
-    latest,
-    changePercent: first > 0 ? ((latest - first) / first) * 100 : null,
-  };
+  if (value == null || !Number.isFinite(value)) return "-"
+  if (metric === "ttft_ms") return `${(value / 1000).toFixed(2)}s`
+  return `${value.toFixed(2)} tps`
 }
 
 function parseIso(raw: string | null): Date | null {
-  if (!raw) return null;
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
+  if (!raw) return null
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed
 }
 
 function formatUtcTime(raw: string | null): string {
-  const parsed = parseIso(raw);
-  if (!parsed) return "n/a";
-  return parsed.toLocaleTimeString([], { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false });
+  const parsed = parseIso(raw)
+  if (!parsed) return "n/a"
+  return parsed.toLocaleTimeString([], { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false })
 }
 
 function formatUtcDate(raw: string | null): string {
-  const parsed = parseIso(raw);
-  if (!parsed) return "n/a";
-  return parsed.toLocaleDateString([], { timeZone: "UTC", month: "short", day: "2-digit" });
+  const parsed = parseIso(raw)
+  if (!parsed) return "n/a"
+  return parsed.toLocaleDateString([], { timeZone: "UTC", month: "short", day: "2-digit" })
 }
 
-type LineSeries = {
-  model: ModelKey;
-  apiType: "coding_plan" | "standard_api";
-  color: string;
-  dashed: boolean;
-  points: Array<{ x: number; value: number }>;
-  stats: SeriesStats;
-};
+type SeriesKey = "glm47_coding" | "glm47_standard" | "glm5_coding" | "glm5_standard"
+
+type ChartDataPoint = {
+  timestamp: string
+} & Record<SeriesKey, number | null>
+
+const ALL_SERIES_KEYS: SeriesKey[] = [
+  "glm47_coding",
+  "glm47_standard",
+  "glm5_coding",
+  "glm5_standard",
+]
+
+function getSeriesKey(model: ModelKey, apiType: "coding" | "standard"): SeriesKey {
+  const modelPrefix = model === "glm-4.7" ? "glm47" : "glm5"
+  return `${modelPrefix}_${apiType}` as SeriesKey
+}
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 640px)")
+    setIsMobile(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener("change", handler)
+    return () => mq.removeEventListener("change", handler)
+  }, [])
+
+  return isMobile
+}
 
 export function OverviewTrend({
   hours,
@@ -97,118 +102,137 @@ export function OverviewTrend({
   windowStart,
   windowEnd,
 }: OverviewTrendProps) {
-  const [metric, setMetric] = useState<TrendMetricKey>("output_tps");
+  const [metric, setMetric] = useState<TrendMetricKey>("output_tps")
+  const [activeSeries, setActiveSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES_KEYS))
+  const isMobile = useIsMobile()
 
-  const chart = useMemo(() => {
-    const start = parseIso(windowStart);
-    const end = parseIso(windowEnd);
+  const { chartData, chartConfig, hasData, seriesStats } = useMemo(() => {
+    const start = parseIso(windowStart)
+    const end = parseIso(windowEnd)
+    
+    const emptyStats: Record<SeriesKey, { min: number | null; max: number | null; latest: number | null }> = {
+      glm47_coding: { min: null, max: null, latest: null },
+      glm47_standard: { min: null, max: null, latest: null },
+      glm5_coding: { min: null, max: null, latest: null },
+      glm5_standard: { min: null, max: null, latest: null },
+    }
+    
     if (!start || !end || end <= start) {
-      return { series: [] as LineSeries[], xTicks: [] as { x: number; label: string }[], yTop: 18, yBottom: 188, hasData: false, axisMin: null, axisMax: null, axisAvg: null, toY: (_v: number) => 0 };
+      return { chartData: [], chartConfig: {}, hasData: false, seriesStats: emptyStats }
     }
 
-    const xStart = 16;
-    const xEnd = 644;
-    const yTop = 18;
-    const yBottom = 188;
-    const plotWidth = xEnd - xStart;
-    const plotHeight = yBottom - yTop;
+    // Collect all unique timestamps
+    const allTimestamps = new Set<string>()
+    
+    for (const model of MODELS) {
+      const codingTrend = trendByModel[model] || []
+      const standardTrend = comparisonTrendByModel[model] || []
+      
+      codingTrend.forEach((p: TrendPoint) => allTimestamps.add(p.timestamp))
+      standardTrend.forEach((p: TrendPoint) => allTimestamps.add(p.timestamp))
+    }
 
-    const domainStartMs = start.getTime();
-    const domainEndMs = end.getTime();
-    const domainSpanMs = Math.max(domainEndMs - domainStartMs, 1);
+    // Sort timestamps
+    const sortedTimestamps = Array.from(allTimestamps).sort()
 
-    const toPoints = (trend: TrendPoint[]) =>
-      trend
-        .map((point) => {
-          const ts = parseIso(point.timestamp);
-          if (!ts) return null;
-          const xRatio = (ts.getTime() - domainStartMs) / domainSpanMs;
-          const clampedXRatio = Math.max(0, Math.min(1, xRatio));
-          const raw = point[metric];
-          const numericValue = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
-          return { x: xStart + clampedXRatio * plotWidth, value: numericValue };
-        })
-        .filter((p): p is { x: number; value: number } => p !== null && p.value !== null);
+    // Build chart data
+    const data: ChartDataPoint[] = sortedTimestamps.map((timestamp) => {
+      const point: Partial<ChartDataPoint> = { timestamp }
 
-    const allValues: number[] = [];
-    const series: LineSeries[] = [];
+      for (const model of MODELS) {
+        const codingTrend = trendByModel[model] || []
+        const standardTrend = comparisonTrendByModel[model] || []
+
+        const codingPoint = codingTrend.find((p: TrendPoint) => p.timestamp === timestamp)
+        const standardPoint = standardTrend.find((p: TrendPoint) => p.timestamp === timestamp)
+
+        const codingKey = getSeriesKey(model, "coding")
+        const standardKey = getSeriesKey(model, "standard")
+
+        const codingRaw = codingPoint?.[metric]
+        const standardRaw = standardPoint?.[metric]
+
+        point[codingKey] = typeof codingRaw === "number" && Number.isFinite(codingRaw) ? codingRaw : null
+        point[standardKey] = typeof standardRaw === "number" && Number.isFinite(standardRaw) ? standardRaw : null
+      }
+
+      return point as ChartDataPoint
+    })
+
+    // Build chart config
+    const config: ChartConfig = {}
+    const stats: Record<SeriesKey, { min: number | null; max: number | null; latest: number | null }> = {
+      glm47_coding: { min: null, max: null, latest: null },
+      glm47_standard: { min: null, max: null, latest: null },
+      glm5_coding: { min: null, max: null, latest: null },
+      glm5_standard: { min: null, max: null, latest: null },
+    }
 
     for (const model of MODELS) {
-      const modelColor = MODEL_COLORS[model];
-      const codingTrend = trendByModel[model] || [];
-      const standardTrend = comparisonTrendByModel[model] || [];
+      const codingKey = getSeriesKey(model, "coding")
+      const standardKey = getSeriesKey(model, "standard")
+      const color = MODEL_COLORS[model]
 
-      const codingPoints = toPoints(codingTrend);
-      const standardPoints = toPoints(standardTrend);
-
-      const codingValues = codingPoints.map((p) => p.value);
-      const standardValues = standardPoints.map((p) => p.value);
-
-      allValues.push(...codingValues, ...standardValues);
-
-      if (codingValues.length > 0) {
-        series.push({
-          model,
-          apiType: "coding_plan",
-          color: modelColor.solid,
-          dashed: false,
-          points: codingPoints,
-          stats: computeSeriesStats(codingValues),
-        });
+      config[codingKey] = {
+        label: `${MODEL_LABELS[model]} Coding`,
+        color,
+      }
+      config[standardKey] = {
+        label: `${MODEL_LABELS[model]} Standard`,
+        color,
       }
 
-      if (standardValues.length > 0) {
-        series.push({
-          model,
-          apiType: "standard_api",
-          color: modelColor.solid,
-          dashed: true,
-          points: standardPoints,
-          stats: computeSeriesStats(standardValues),
-        });
+      // Calculate stats
+      const codingValues = data.map((d) => d[codingKey]).filter((v): v is number => v !== null)
+      const standardValues = data.map((d) => d[standardKey]).filter((v): v is number => v !== null)
+
+      stats[codingKey] = {
+        min: codingValues.length > 0 ? Math.min(...codingValues) : null,
+        max: codingValues.length > 0 ? Math.max(...codingValues) : null,
+        latest: codingValues.length > 0 ? codingValues[codingValues.length - 1] : null,
+      }
+      stats[standardKey] = {
+        min: standardValues.length > 0 ? Math.min(...standardValues) : null,
+        max: standardValues.length > 0 ? Math.max(...standardValues) : null,
+        latest: standardValues.length > 0 ? standardValues[standardValues.length - 1] : null,
       }
     }
 
-    const rangeHours = domainSpanMs / 3_600_000;
-    const tickStepHours = rangeHours <= 24 ? 6 : 24;
-    const xTicks: { x: number; label: string }[] = [];
-    for (let tickMs = domainStartMs; tickMs <= domainEndMs; tickMs += tickStepHours * 3_600_000) {
-      const xRatio = (tickMs - domainStartMs) / domainSpanMs;
-      const x = xStart + xRatio * plotWidth;
-      const label = new Date(tickMs).toLocaleTimeString([], { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false });
-      xTicks.push({ x, label });
-    }
+    const hasAnyData = data.some((d) => 
+      MODELS.some((model) => {
+        const codingKey = getSeriesKey(model, "coding")
+        const standardKey = getSeriesKey(model, "standard")
+        return d[codingKey] !== null || d[standardKey] !== null
+      })
+    )
 
-    if (!allValues.length) {
-      return { series: [], xTicks, yTop, yBottom, hasData: false, axisMin: null, axisMax: null, axisAvg: null, toY: (v: number) => 0 };
-    }
+    return { chartData: data, chartConfig: config, hasData: hasAnyData, seriesStats: stats }
+  }, [comparisonTrendByModel, metric, trendByModel, windowEnd, windowStart])
 
-    const axisMin = Math.min(...allValues);
-    const axisMax = Math.max(...allValues);
-    const axisAvg = allValues.reduce((sum, v) => sum + v, 0) / allValues.length;
-    const yRange = Math.max(axisMax - axisMin, 0.001);
-    const toY = (value: number) => yBottom - ((value - axisMin) / yRange) * plotHeight;
+  const toggleSeries = (seriesKey: SeriesKey) => {
+    setActiveSeries((prev) => {
+      const next = new Set(prev)
+      if (next.has(seriesKey)) {
+        next.delete(seriesKey)
+      } else {
+        next.add(seriesKey)
+      }
+      return next
+    })
+  }
 
-    return { series, xTicks, yTop, yBottom, hasData: true, axisMin, axisMax, axisAvg, toY };
-  }, [comparisonTrendByModel, metric, trendByModel, windowEnd, windowStart]);
-
-  const activeMetric = METRIC_OPTIONS.find((o) => o.key === metric) ?? METRIC_OPTIONS[0];
+  const activeMetric = METRIC_OPTIONS.find((o) => o.key === metric) ?? METRIC_OPTIONS[0]
 
   return (
     <article className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
-      <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Trends</h2>
-          <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">Output TPS and TTFT over a rolling UTC window.</p>
-        </div>
-        <span className="rounded-full bg-[color:var(--accent-sky)]/50 px-3 py-1 font-mono text-xs text-[color:var(--card-foreground)]">
-          {hours}h window
-        </span>
+      <div className="mb-4">
+        <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Trends</h2>
+        <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">Performance trends over a rolling UTC window.</p>
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
         {METRIC_OPTIONS.map((option) => {
-          const selected = option.key === metric;
+          const selected = option.key === metric
           return (
             <button
               key={option.key}
@@ -222,72 +246,172 @@ export function OverviewTrend({
             >
               {option.label}
             </button>
-          );
+          )
         })}
-      </div>
-
-      <div className="mb-3 flex flex-wrap items-center gap-6 text-xs">
-        {MODELS.map((model) => {
-          const colorInfo = MODEL_COLORS[model];
-          return (
-            <span key={model} className="inline-flex items-center gap-2 font-medium text-[color:var(--card-foreground)]">
-              <span className="h-2 w-4 rounded-full" style={{ backgroundColor: colorInfo.solid }} aria-hidden />
-              {colorInfo.label}
-            </span>
-          );
-        })}
-        <span className="text-[color:var(--muted-foreground)]">
-          Solid = Coding Plan · Dashed = Standard API
-        </span>
       </div>
 
       <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/50 p-3 md:p-5">
-        {!chart.hasData ? (
+        {!hasData ? (
           <p className="py-16 text-center text-sm text-[color:var(--muted-foreground)]">
             No trend data in this window for {activeMetric.label}.
           </p>
         ) : (
           <>
-            <svg viewBox="0 0 660 230" className="h-56 w-full" role="img" aria-label={`${activeMetric.label} trend`}>
-              <line x1="16" y1={chart.yTop} x2="644" y2={chart.yTop} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
-              <line x1="16" y1={(chart.yTop + chart.yBottom) / 2} x2="644" y2={(chart.yTop + chart.yBottom) / 2} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
-              <line x1="16" y1={chart.yBottom} x2="644" y2={chart.yBottom} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
-              {chart.xTicks.map((tick) => (
-                <g key={tick.x.toFixed(1)}>
-                  <line x1={tick.x} y1={chart.yTop} x2={tick.x} y2={chart.yBottom} stroke="var(--border)" strokeDasharray="3 6" strokeWidth="1" />
-                  <text x={tick.x} y="214" textAnchor="middle" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
-                    {tick.label}
-                  </text>
-                </g>
-              ))}
-              {chart.series.map((s, idx) => {
-                if (s.points.length === 0) return null;
-                const d = s.points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${chart.toY(p.value).toFixed(1)}`).join(" ");
-                return (
-                  <path
-                    key={`${s.model}-${s.apiType}-${idx}`}
-                    d={d}
-                    fill="none"
-                    stroke={s.color}
-                    strokeWidth={s.dashed ? 2 : 3}
-                    strokeDasharray={s.dashed ? "6 4" : undefined}
-                    strokeLinecap="round"
-                    opacity={s.dashed ? 0.8 : 1}
+            <ChartContainer config={chartConfig} className="h-56 w-full">
+              <LineChart
+                accessibilityLayer
+                data={chartData}
+                margin={{ left: 12, right: 12, top: 4, bottom: 4 }}
+              >
+                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
+                <XAxis
+                  dataKey="timestamp"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={32}
+                  tickFormatter={(value) => {
+                    const date = new Date(value)
+                    return date.toLocaleTimeString([], {
+                      timeZone: "UTC",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: false,
+                    })
+                  }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  tickFormatter={(value) => {
+                    if (metric === "ttft_ms") return `${(value / 1000).toFixed(1)}s`
+                    return value.toFixed(1)
+                  }}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      indicator="line"
+                      className="rounded-lg border-[color:var(--border)] bg-[color:var(--popover)] shadow-lg"
+                      labelFormatter={(value) => {
+                        const date = new Date(value as string)
+                        return (
+                          <span className="font-medium text-[color:var(--card-foreground)]">
+                            {date.toLocaleString([], {
+                              timeZone: "UTC",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            })} UTC
+                          </span>
+                        )
+                      }}
+                      formatter={(value, name, item) => {
+                        const configKey = name as SeriesKey
+                        const label = chartConfig[configKey]?.label || name
+                        return (
+                          <div className="flex items-center justify-between gap-6">
+                            <span className="text-[color:var(--muted-foreground)]">{label}</span>
+                            <span className="font-mono font-medium text-[color:var(--card-foreground)]">
+                              {formatMetricValue(metric, value as number | null)}
+                            </span>
+                          </div>
+                        )
+                      }}
+                    />
+                  }
+                />
+                {activeSeries.has("glm47_coding") && (
+                  <Line
+                    dataKey="glm47_coding"
+                    type="monotone"
+                    stroke="var(--color-glm47_coding)"
+                    strokeWidth={2}
+                    dot={isMobile ? false : { fill: "var(--color-glm47_coding)", r: 3 }}
+                    activeDot={{ r: 5 }}
+                    connectNulls
                   />
-                );
-              })}
-              <text x="648" y={chart.yTop + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
-                {formatAxisValue(metric, chart.axisMax)}
-              </text>
-              <text x="648" y={(chart.yTop + chart.yBottom) / 2 + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
-                {formatAxisValue(metric, chart.axisAvg)}
-              </text>
-              <text x="648" y={chart.yBottom + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
-                {formatAxisValue(metric, chart.axisMin)}
-              </text>
-            </svg>
+                )}
+                {activeSeries.has("glm47_standard") && (
+                  <Line
+                    dataKey="glm47_standard"
+                    type="monotone"
+                    stroke="var(--color-glm47_standard)"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={isMobile ? false : { fill: "var(--color-glm47_standard)", r: 3 }}
+                    activeDot={{ r: 5 }}
+                    connectNulls
+                  />
+                )}
+                {activeSeries.has("glm5_coding") && (
+                  <Line
+                    dataKey="glm5_coding"
+                    type="monotone"
+                    stroke="var(--color-glm5_coding)"
+                    strokeWidth={2}
+                    dot={isMobile ? false : { fill: "var(--color-glm5_coding)", r: 3 }}
+                    activeDot={{ r: 5 }}
+                    connectNulls
+                  />
+                )}
+                {activeSeries.has("glm5_standard") && (
+                  <Line
+                    dataKey="glm5_standard"
+                    type="monotone"
+                    stroke="var(--color-glm5_standard)"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    dot={isMobile ? false : { fill: "var(--color-glm5_standard)", r: 3 }}
+                    activeDot={{ r: 5 }}
+                    connectNulls
+                  />
+                )}
+              </LineChart>
+            </ChartContainer>
 
-            <div className="mt-2 flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">
+            {/* Legend with toggle buttons */}
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs">
+              {MODELS.map((model) => (
+                <div key={model} className="flex items-center gap-2">
+                  {/* Coding series */}
+                  <button
+                    onClick={() => toggleSeries(getSeriesKey(model, "coding"))}
+                    className={`flex items-center gap-1.5 transition ${
+                      activeSeries.has(getSeriesKey(model, "coding")) ? "opacity-100" : "opacity-40"
+                    }`}
+                  >
+                    <span
+                      className="h-2 w-3 rounded-full"
+                      style={{ backgroundColor: MODEL_COLORS[model] }}
+                    />
+                    <span className="font-medium text-[color:var(--card-foreground)]">
+                      {MODEL_LABELS[model]}
+                    </span>
+                  </button>
+                  {/* Standard series */}
+                  <button
+                    onClick={() => toggleSeries(getSeriesKey(model, "standard"))}
+                    className={`flex items-center gap-1.5 transition ${
+                      activeSeries.has(getSeriesKey(model, "standard")) ? "opacity-100" : "opacity-40"
+                    }`}
+                  >
+                    <span
+                      className="h-0.5 w-3 border-b-2 border-dashed"
+                      style={{ borderColor: MODEL_COLORS[model] }}
+                    />
+                    <span className="text-[color:var(--muted-foreground)]">
+                      {MODEL_LABELS[model]} Std
+                    </span>
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">
               <span className="font-mono">
                 {formatUtcDate(windowStart)} {formatUtcTime(windowStart)} UTC
               </span>
@@ -299,29 +423,49 @@ export function OverviewTrend({
         )}
       </div>
 
-      {chart.hasData && chart.series.length > 0 && (
+      {hasData && Object.keys(seriesStats).length > 0 && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {chart.series.map((s, idx) => (
-            <div key={`${s.model}-${s.apiType}-${idx}`} className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 p-3">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-3 rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="font-mono text-xs font-medium text-[color:var(--card-foreground)]">
-                  {MODEL_COLORS[s.model].label}
-                </span>
-                <span className="font-mono text-[10px] text-[color:var(--muted-foreground)]">
-                  {s.apiType === "coding_plan" ? "Coding" : "Standard"}
-                </span>
-              </div>
-              <p className="mt-2 text-sm text-[color:var(--card-foreground)]">
-                Latest: <span className="font-mono font-medium">{formatMetricValue(metric, s.stats.latest)}</span>
-              </p>
-              <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                Drift: {s.stats.changePercent == null ? "-" : `${s.stats.changePercent >= 0 ? "+" : ""}${s.stats.changePercent.toFixed(1)}%`}
-              </p>
-            </div>
-          ))}
+          {MODELS.map((model) => {
+            const codingKey: SeriesKey = getSeriesKey(model, "coding")
+            const standardKey: SeriesKey = getSeriesKey(model, "standard")
+            const codingStats = seriesStats[codingKey]
+            const standardStats = seriesStats[standardKey]
+
+            return [
+              { key: codingKey, stats: codingStats, label: "Coding", model },
+              { key: standardKey, stats: standardStats, label: "Standard", model },
+            ].map(({ key, stats, label }) => {
+              if (!stats || !activeSeries.has(key)) return null
+
+              return (
+                <div
+                  key={key}
+                  className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 p-3"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2 w-3 rounded-full"
+                      style={{ backgroundColor: MODEL_COLORS[model] }}
+                    />
+                    <span className="font-mono text-xs font-medium text-[color:var(--card-foreground)]">
+                      {MODEL_LABELS[model]}
+                    </span>
+                    <span className="font-mono text-[10px] text-[color:var(--muted-foreground)]">
+                      {label}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-[color:var(--card-foreground)]">
+                    Latest: <span className="font-mono font-medium">{formatMetricValue(metric, stats.latest)}</span>
+                  </p>
+                  <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                    Range: {formatMetricValue(metric, stats.min)} – {formatMetricValue(metric, stats.max)}
+                  </p>
+                </div>
+              )
+            })
+          })}
         </div>
       )}
     </article>
-  );
+  )
 }
