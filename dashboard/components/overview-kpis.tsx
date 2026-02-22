@@ -27,8 +27,8 @@ function KpiCardPrimary({ label, delta, tone, unit, formatValue, data, compariso
       <div className="grid grid-cols-[auto_repeat(2,1fr)] gap-x-6 gap-y-2">
         <div />
         {MODELS.map((model) => (
-          <p key={model} className={`font-display text-sm font-medium text-[color:var(--card-foreground)] ${model === "glm-5" ? "bg-gradient-to-r from-[color:var(--accent-gold)]/40 to-[color:var(--accent-mint)]/30 px-2 py-0.5 rounded-md -mx-2" : ""}`}>
-            {MODEL_LABELS[model]}
+          <p key={model} className={`font-display text-sm font-medium text-[color:var(--card-foreground)] ${model === "glm-5" ? "font-bold ml-2" : ""}`}>
+            {MODEL_LABELS[model]}{model === "glm-5" ? " ★" : ""}
           </p>
         ))}
         
@@ -36,7 +36,7 @@ function KpiCardPrimary({ label, delta, tone, unit, formatValue, data, compariso
         {MODELS.map((model) => {
           const value = formatValue(data[model] || {});
           return (
-            <p key={model} className="font-display text-2xl text-[color:var(--card-foreground)]">
+            <p key={model} className={`font-display text-2xl text-[color:var(--card-foreground)] ${model === "glm-5" ? "ml-2" : ""}`}>
               {value ?? "—"}
               {unit && value && <span className="text-base ml-1 text-[color:var(--muted-foreground)]">{unit}</span>}
             </p>
@@ -47,7 +47,7 @@ function KpiCardPrimary({ label, delta, tone, unit, formatValue, data, compariso
         {MODELS.map((model) => {
           const value = formatValue(comparisonData[model] || {});
           return (
-            <p key={model} className="font-mono text-base text-[color:var(--muted-foreground)]">
+            <p key={model} className={`font-mono text-base text-[color:var(--muted-foreground)] ${model === "glm-5" ? "ml-2" : ""}`}>
               {value ?? "—"}
               {unit && value && <span className="text-xs ml-1">{unit}</span>}
             </p>
@@ -75,8 +75,8 @@ function KpiCardSecondary({ label, delta, tone, unit, formatValue, data, compari
           const stdValue = formatValue(comparisonData[model] || {});
           return (
             <div key={model} className="space-y-1">
-              <p className={`font-display text-sm font-medium text-[color:var(--card-foreground)] ${model === "glm-5" ? "bg-gradient-to-r from-[color:var(--accent-gold)]/40 to-[color:var(--accent-mint)]/30 px-2 py-0.5 rounded-md -mx-2" : ""}`}>
-                {MODEL_LABELS[model]}
+              <p className={`font-display text-sm font-medium text-[color:var(--card-foreground)] ${model === "glm-5" ? "font-bold" : ""}`}>
+                {MODEL_LABELS[model]}{model === "glm-5" ? " ★" : ""}
               </p>
               <div className="flex flex-col gap-0.5">
                 <p className="font-display text-2xl text-[color:var(--card-foreground)]">

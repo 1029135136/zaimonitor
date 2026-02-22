@@ -432,9 +432,9 @@ export function OverviewTrend({
             const standardStats = seriesStats[standardKey]
 
             return [
-              { key: codingKey, stats: codingStats, label: "Coding", model },
-              { key: standardKey, stats: standardStats, label: "Standard", model },
-            ].map(({ key, stats, label }) => {
+              { key: codingKey, stats: codingStats, label: "Coding", model, isCoding: true },
+              { key: standardKey, stats: standardStats, label: "Standard", model, isCoding: false },
+            ].map(({ key, stats, label, isCoding }) => {
               if (!stats || !activeSeries.has(key)) return null
 
               return (
@@ -443,14 +443,21 @@ export function OverviewTrend({
                   className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 p-3"
                 >
                   <div className="flex items-center gap-2">
-                    <span
-                      className="h-2 w-3 rounded-full"
-                      style={{ backgroundColor: MODEL_COLORS[model] }}
-                    />
+                    {isCoding ? (
+                      <span
+                        className="h-2 w-3 rounded-full"
+                        style={{ backgroundColor: MODEL_COLORS[model] }}
+                      />
+                    ) : (
+                      <span
+                        className="h-0.5 w-3 border-b-2 border-dashed"
+                        style={{ borderColor: MODEL_COLORS[model] }}
+                      />
+                    )}
                     <span className="font-mono text-xs font-medium text-[color:var(--card-foreground)]">
                       {MODEL_LABELS[model]}
                     </span>
-                    <span className="font-mono text-[10px] text-[color:var(--muted-foreground)]">
+                    <span className="font-mono text-[10px] text-[color:var(--muted-foreground)] ml-1">
                       {label}
                     </span>
                   </div>
