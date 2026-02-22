@@ -48,11 +48,6 @@ PROMPT_SUITE = [
         "inputs and expected outputs: 'RaceCar' -> True, 'hello' -> False. Return only code."
     ),
     (
-        "Given this JavaScript snippet: `const nums=[1,2,3,4,5,6];` write a cleaner function "
-        "`getEvenSquares(nums)` that returns the squares of even numbers. Use modern JS "
-        "(arrow functions, filter, map). Then show the exact output for the given `nums`."
-    ),
-    (
         "Analyze the following JSON and return: (1) total requests, (2) error rate in %, "
         "(3) average latency_ms for successful requests only, (4) top 2 endpoints by total "
         "traffic.\n\n"
@@ -83,12 +78,6 @@ PROMPT_SUITE = [
         "  ]\n"
         "}\n\n"
         "Treat status >= 400 as errors. Show calculations briefly."
-    ),
-    (
-        "Write a short SQL query for PostgreSQL. Schema: orders(order_id, created_at, status), "
-        "order_items(order_id, product_id, quantity, unit_price), products(product_id, name). "
-        "Goal: top 3 products by revenue in last 30 days from completed orders only "
-        "(orders.status='completed'). Return columns: product_id, name, revenue."
     ),
     (
         "Provide a concise pull request reliability checklist with exactly 8 bullet points, "

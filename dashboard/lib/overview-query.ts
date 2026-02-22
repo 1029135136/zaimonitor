@@ -506,7 +506,7 @@ export async function queryOverview(
     const latestTs = docs[docs.length - 1]?.timestamp || trendDocs[trendDocs.length - 1]?.timestamp;
 
     const nextRun = nextThirtyMark(nowUtc);
-    const cadenceLabel = "Updates every hour";
+    const cadenceLabel = "Updates every four hours";
 
     const avg = (values: number[]): number | null => {
       if (!values.length) return null;

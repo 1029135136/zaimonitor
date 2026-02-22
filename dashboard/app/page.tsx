@@ -62,7 +62,7 @@ export default function Home() {
     };
   }, [hours, model, endpointFamily]);
 
-  const scheduleText = data?.schedule?.cadence_label ?? "Updates every hour";
+  const scheduleText = data?.schedule?.cadence_label ?? "Updates every four hours";
 
   const kpis: KpiItem[] = [
     {
