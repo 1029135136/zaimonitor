@@ -6,24 +6,14 @@ export const runtime = "nodejs";
 function parseHours(raw: string | null): number {
   if (!raw) return 24;
   const normalized = raw.trim();
-  if (normalized === "24" || normalized === "168") {
-    return Number(normalized);
-  }
+  if (normalized === "24" || normalized === "168") return Number(normalized);
   return 24;
-}
-
-function parseModel(raw: string | null): string | undefined {
-  if (!raw) return undefined;
-  const cleaned = raw.replace(/[^\w\-./]/g, "").slice(0, 120);
-  return cleaned || undefined;
 }
 
 function parseEndpointFamily(raw: string | null): "coding_plan" | "official_api" | "both" {
   if (!raw) return "coding_plan";
   const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
-  if (normalized === "coding_plan" || normalized === "official_api" || normalized === "both") {
-    return normalized;
-  }
+  if (normalized === "coding_plan" || normalized === "official_api" || normalized === "both") return normalized;
   return "coding_plan";
 }
 
@@ -31,7 +21,6 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const hours = parseHours(url.searchParams.get("hours"));
-    const model = parseModel(url.searchParams.get("model"));
     const endpointFamily = parseEndpointFamily(url.searchParams.get("endpoint_family"));
 
     const mongoUri = process.env.MONGODB_URI;
@@ -41,17 +30,11 @@ export async function GET(request: Request) {
 
     const payload =
       endpointFamily === "both"
-        ? await queryOverviewPair(mongoUri, { hours, model })
-        : await queryOverview(mongoUri, {
-            hours,
-            model,
-            endpointFamily: endpointFamily as OverviewQueryParams["endpointFamily"],
-          });
+        ? await queryOverviewPair(mongoUri, { hours })
+        : await queryOverview(mongoUri, { hours, endpointFamily: endpointFamily as OverviewQueryParams["endpointFamily"] });
 
     return NextResponse.json(payload, {
-      headers: {
-        "cache-control": "private, no-store",
-      },
+      headers: { "cache-control": "private, no-store" },
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Failed to fetch overview";

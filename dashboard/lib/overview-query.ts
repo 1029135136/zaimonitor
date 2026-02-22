@@ -3,17 +3,12 @@ import { MongoClient, Collection, Document } from "mongodb";
 const ENDPOINT_FAMILY_CODING_PLAN = "coding_plan";
 const ENDPOINT_FAMILY_OFFICIAL_API = "official_api";
 const ENDPOINT_FAMILIES = [ENDPOINT_FAMILY_CODING_PLAN, ENDPOINT_FAMILY_OFFICIAL_API];
-const DEFAULT_MODELS = ["glm-4.7", "glm-5"] as const;
+const KNOWN_MODELS = ["glm-4.7", "glm-5"] as const;
 const MIN_STABLE_GENERATION_WINDOW_MS = 500.0;
 const MAX_REASONABLE_TPS = 1000.0;
 
 interface Metrics {
-  first_sse_event_ms?: number;
-  first_reasoning_token_ms?: number;
-  first_answer_token_ms?: number;
   ttft_ms?: number;
-  thinking_window_ms?: number;
-  time_to_completed_answer_ms?: number;
   provider_output_tokens_per_second?: number;
   provider_output_tokens_per_second_end_to_end?: number;
   output_tokens_per_second_post_ttft?: number;
@@ -24,7 +19,6 @@ interface Metrics {
 
 interface Tokens {
   completion_tokens?: number;
-  cached_prompt_tokens?: number;
 }
 
 interface ErrorDoc {
@@ -49,18 +43,13 @@ interface BucketData {
   output_count: number;
   ttft_sum: number;
   ttft_count: number;
-  visible_sum: number;
-  visible_count: number;
-  provider_sum: number;
-  provider_count: number;
 }
 
 interface RunTrendPoint {
   timestamp: Date;
+  model: string;
   output_tps?: number;
   ttft_ms?: number;
-  visible_tps?: number;
-  provider_tps?: number;
 }
 
 type EndpointFamily = typeof ENDPOINT_FAMILY_CODING_PLAN | typeof ENDPOINT_FAMILY_OFFICIAL_API;
@@ -83,9 +72,7 @@ function getMongoClientCache(): MongoClientCache {
 async function getMongoClient(mongoUri: string): Promise<MongoClient> {
   const cache = getMongoClientCache();
   const existing = cache.clients.get(mongoUri);
-  if (existing) {
-    return existing;
-  }
+  if (existing) return existing;
 
   const clientPromise = new MongoClient(mongoUri, { serverSelectionTimeoutMS: 10000 })
     .connect()
@@ -120,9 +107,7 @@ function toIso(value: Date | null | undefined): string | null {
 
 function normalizeEndpointFamily(raw: string): string {
   const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
-  if (ENDPOINT_FAMILIES.includes(normalized)) {
-    return normalized;
-  }
+  if (ENDPOINT_FAMILIES.includes(normalized)) return normalized;
   throw new Error(`endpoint family must be one of: ${ENDPOINT_FAMILIES.join(", ")}`);
 }
 
@@ -162,9 +147,7 @@ function extractStableTps(doc: InferenceDoc, key: keyof Metrics): number | null 
   if (rawValue === undefined || rawGenerationWindowMs === undefined) return null;
 
   const generationWindowMs = Number(rawGenerationWindowMs);
-  if (isNaN(generationWindowMs) || generationWindowMs < MIN_STABLE_GENERATION_WINDOW_MS) {
-    return null;
-  }
+  if (isNaN(generationWindowMs) || generationWindowMs < MIN_STABLE_GENERATION_WINDOW_MS) return null;
 
   const value = Number(rawValue);
   if (isNaN(value) || value < 0 || value > MAX_REASONABLE_TPS) return null;
@@ -186,13 +169,7 @@ function extractOutputTpsPostTtft(doc: InferenceDoc): number | null {
   const totalLatencyMs = metrics.total_latency_ms;
   const ttftMs = metrics.ttft_ms;
 
-  if (
-    completionTokens === undefined ||
-    totalLatencyMs === undefined ||
-    ttftMs === undefined
-  ) {
-    return null;
-  }
+  if (completionTokens === undefined || totalLatencyMs === undefined || ttftMs === undefined) return null;
 
   const ct = Number(completionTokens);
   const tl = Number(totalLatencyMs);
@@ -204,77 +181,29 @@ function extractOutputTpsPostTtft(doc: InferenceDoc): number | null {
   return (ct - 1) / ((tl - ttft) / 1000);
 }
 
-function asDict(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-}
-
-function collectMetricValues(docs: InferenceDoc[], key: keyof Metrics): number[] {
-  const values: number[] = [];
-  for (const doc of docs) {
-    const metrics = asDict(doc.metrics);
-    const raw = metrics[key];
-    if (raw === undefined || raw === null) continue;
-    const value = Number(raw);
-    if (!isNaN(value)) values.push(value);
-  }
-  return values;
-}
-
-function collectMetricGapValues(
-  docs: InferenceDoc[],
-  leftKey: keyof Metrics,
-  rightKey: keyof Metrics,
-): number[] {
-  const values: number[] = [];
-  for (const doc of docs) {
-    const metrics = asDict(doc.metrics);
-    const leftRaw = metrics[leftKey];
-    const rightRaw = metrics[rightKey];
-    if (leftRaw === undefined || leftRaw === null || rightRaw === undefined || rightRaw === null) {
-      continue;
-    }
-    const left = Number(leftRaw);
-    const right = Number(rightRaw);
-    if (!isNaN(left) && !isNaN(right)) values.push(left - right);
-  }
-  return values;
-}
-
-function collectTokenValues(docs: InferenceDoc[], key: keyof Tokens): number[] {
-  const values: number[] = [];
-  for (const doc of docs) {
-    const tokens = asDict(doc.tokens);
-    const raw = tokens[key];
-    if (raw === undefined || raw === null) continue;
-    const value = Number(raw);
-    if (!isNaN(value)) values.push(value);
-  }
-  return values;
+function normalizeModel(model: string | undefined): string {
+  if (!model || typeof model !== "string") return "unknown";
+  const trimmed = model.trim().toLowerCase();
+  if (trimmed.includes("glm-5") || trimmed === "glm5") return "glm-5";
+  if (trimmed.includes("glm-4.7") || trimmed.includes("glm47")) return "glm-4.7";
+  return trimmed || "unknown";
 }
 
 function initBucketData(): BucketData {
-  return {
-    output_sum: 0,
-    output_count: 0,
-    ttft_sum: 0,
-    ttft_count: 0,
-    visible_sum: 0,
-    visible_count: 0,
-    provider_sum: 0,
-    provider_count: 0,
-  };
+  return { output_sum: 0, output_count: 0, ttft_sum: 0, ttft_count: 0 };
 }
 
 function buildRunTrendPoints(docs: InferenceDoc[]): RunTrendPoint[] {
-  const runBuckets = new Map<string, { timestamp: Date; data: BucketData }>();
+  const runBuckets = new Map<string, { timestamp: Date; model: string; data: BucketData }>();
 
   for (const [index, doc] of docs.entries()) {
     const ts = doc.timestamp;
     if (!(ts instanceof Date) || isNaN(ts.getTime())) continue;
 
     const rawRunId = typeof doc.run_id === "string" ? doc.run_id.trim() : "";
-    const runKey = rawRunId.length > 0 ? rawRunId : `legacy:${index}`;
-    const existing = runBuckets.get(runKey) || { timestamp: new Date(ts), data: initBucketData() };
+    const model = normalizeModel(doc.model);
+    const runKey = rawRunId.length > 0 ? `${rawRunId}|${model}` : `legacy:${index}|${model}`;
+    const existing = runBuckets.get(runKey) || { timestamp: new Date(ts), model, data: initBucketData() };
 
     if (ts.getTime() > existing.timestamp.getTime()) {
       existing.timestamp = new Date(ts);
@@ -288,22 +217,10 @@ function buildRunTrendPoints(docs: InferenceDoc[]): RunTrendPoint[] {
       }
 
       const ttftRaw = doc.metrics?.ttft_ms;
-      const ttft = ttftRaw === undefined || ttftRaw === null ? null : Number(ttftRaw);
+      const ttft = ttftRaw == null ? null : Number(ttftRaw);
       if (ttft !== null && !isNaN(ttft)) {
         existing.data.ttft_sum += ttft;
         existing.data.ttft_count += 1;
-      }
-
-      const visibleTps = extractStableTps(doc, "visible_output_tokens_per_second");
-      if (visibleTps !== null) {
-        existing.data.visible_sum += visibleTps;
-        existing.data.visible_count += 1;
-      }
-
-      const providerTps = extractStableTps(doc, "provider_output_tokens_per_second");
-      if (providerTps !== null) {
-        existing.data.provider_sum += providerTps;
-        existing.data.provider_count += 1;
       }
     }
 
@@ -311,13 +228,12 @@ function buildRunTrendPoints(docs: InferenceDoc[]): RunTrendPoint[] {
   }
 
   const runTrendPoints: RunTrendPoint[] = [];
-  for (const { timestamp, data } of runBuckets.values()) {
+  for (const { timestamp, model, data } of runBuckets.values()) {
     runTrendPoints.push({
       timestamp,
+      model,
       output_tps: data.output_count > 0 ? data.output_sum / data.output_count : undefined,
       ttft_ms: data.ttft_count > 0 ? data.ttft_sum / data.ttft_count : undefined,
-      visible_tps: data.visible_count > 0 ? data.visible_sum / data.visible_count : undefined,
-      provider_tps: data.provider_count > 0 ? data.provider_sum / data.provider_count : undefined,
     });
   }
 
@@ -325,10 +241,31 @@ function buildRunTrendPoints(docs: InferenceDoc[]): RunTrendPoint[] {
   return runTrendPoints;
 }
 
+function collectMetricValues(docs: InferenceDoc[], key: keyof Metrics): number[] {
+  const values: number[] = [];
+  for (const doc of docs) {
+    const raw = doc.metrics?.[key];
+    if (raw == null) continue;
+    const value = Number(raw);
+    if (!isNaN(value)) values.push(value);
+  }
+  return values;
+}
+
 export interface OverviewQueryParams {
   hours: number;
-  model?: string;
   endpointFamily: EndpointFamily;
+}
+
+export interface ModelMetrics {
+  requests: number;
+  successes: number;
+  failures: number;
+  success_rate_percent: number | null;
+  avg_ttft_ms: number | null;
+  avg_output_tps: number | null;
+  p95_ttft_ms: number | null;
+  avg_provider_tps_end_to_end: number | null;
 }
 
 export interface OverviewResult {
@@ -337,42 +274,15 @@ export interface OverviewResult {
     start: string | null;
     end: string | null;
   };
-  totals: {
-    requests: number;
-    successes: number;
-    failures: number;
-    success_rate_percent: number | null;
-  };
-  metrics: {
-    avg_first_sse_event_ms: number | null;
-    avg_first_reasoning_token_ms: number | null;
-    avg_first_answer_token_ms: number | null;
-    avg_ttft_ms: number | null;
-    avg_sse_to_visible_gap_ms: number | null;
-    avg_thinking_window_ms: number | null;
-    avg_time_to_completed_answer_ms: number | null;
-    avg_output_tps: number | null;
-    avg_visible_tps: number | null;
-    avg_provider_tps: number | null;
-    avg_provider_tps_end_to_end: number | null;
-    avg_cached_prompt_tokens: number | null;
-    p95_output_tps: number | null;
-    p95_ttft_ms: number | null;
-    p95_total_latency_ms: number | null;
-  };
-  trend: Array<{
+  metrics_by_model: Record<string, ModelMetrics>;
+  trend_by_model: Record<string, Array<{
     timestamp: string;
     output_tps?: number;
     ttft_ms?: number;
-    visible_tps?: number;
-    provider_tps?: number;
-  }>;
+  }>>;
   errors: Array<{ type: string; count: number }>;
   models: string[];
-  endpoint_families: string[];
-  selected_endpoint_family: string;
-  selected_model: string | null;
-  using_legacy_metrics: boolean;
+  endpoint_family: string;
   latest_document_timestamp: string | null;
   generated_at: string | null;
 }
@@ -387,12 +297,7 @@ export async function queryOverview(
   mongoUri: string,
   params: OverviewQueryParams,
 ): Promise<OverviewResult> {
-  let endpointFamily: EndpointFamily;
-  try {
-    endpointFamily = normalizeEndpointFamily(params.endpointFamily) as EndpointFamily;
-  } catch (exc) {
-    throw new Error(exc instanceof Error ? exc.message : "Invalid endpoint family");
-  }
+  const endpointFamily = normalizeEndpointFamily(params.endpointFamily) as EndpointFamily;
 
   const dbName = process.env.MONGO_DB || "zaimonitor";
   const collectionName = process.env.MONGO_COLLECTION || "inference_runs";
@@ -407,22 +312,15 @@ export async function queryOverview(
   const collection: Collection<InferenceDoc> = db.collection(collectionName);
 
   const scopeFilter = buildEndpointFamilyMatch(endpointFamily);
-  const trendScopeFilter: Document = { ...scopeFilter };
-  if (params.model) {
-    trendScopeFilter.model = params.model;
-  }
 
-  const latestTrendDoc = await collection
-    .findOne(trendScopeFilter, {
-      projection: { _id: 0, timestamp: 1 },
-      sort: { timestamp: -1 },
-    })
+  const latestDoc = await collection
+    .findOne(scopeFilter, { projection: { _id: 0, timestamp: 1 }, sort: { timestamp: -1 } })
     .catch(() => null);
 
-  const latestTrendTimestamp = latestTrendDoc?.timestamp;
+  const latestTimestamp = latestDoc?.timestamp;
   const trendWindowEnd =
-    latestTrendTimestamp instanceof Date && !isNaN(latestTrendTimestamp.getTime())
-      ? new Date(latestTrendTimestamp)
+    latestTimestamp instanceof Date && !isNaN(latestTimestamp.getTime())
+      ? new Date(latestTimestamp)
       : nowUtc;
   const trendWindowStart = new Date(trendWindowEnd.getTime() - trendWindowDurationMs);
 
@@ -434,10 +332,6 @@ export async function queryOverview(
     timestamp: { $gte: trendWindowStart, $lte: trendWindowEnd },
     ...scopeFilter,
   };
-  if (params.model) {
-    matchMetrics.model = params.model;
-    matchTrend.model = params.model;
-  }
 
   const projection = {
     _id: 0,
@@ -448,90 +342,98 @@ export async function queryOverview(
     model: 1,
     endpoint_family: 1,
     endpoint_base: 1,
-    "metrics.first_sse_event_ms": 1,
-    "metrics.first_reasoning_token_ms": 1,
-    "metrics.first_answer_token_ms": 1,
     "metrics.ttft_ms": 1,
-    "metrics.thinking_window_ms": 1,
-    "metrics.time_to_completed_answer_ms": 1,
-    "metrics.provider_output_tokens_per_second": 1,
     "metrics.provider_output_tokens_per_second_end_to_end": 1,
     "metrics.output_tokens_per_second_post_ttft": 1,
-    "metrics.visible_output_tokens_per_second": 1,
     "metrics.generation_window_ms": 1,
     "metrics.total_latency_ms": 1,
     "tokens.completion_tokens": 1,
-    "tokens.cached_prompt_tokens": 1,
     "error.type": 1,
   };
 
   const [docsV4, trendDocsV4] = await Promise.all([
-    collection
-      .find({ ...matchMetrics, metrics_version: { $gte: 4 } }, { projection })
-      .sort({ timestamp: 1 })
-      .toArray(),
-    collection
-      .find({ ...matchTrend, metrics_version: { $gte: 4 } }, { projection })
-      .sort({ timestamp: 1 })
-      .toArray(),
+    collection.find({ ...matchMetrics, metrics_version: { $gte: 4 } }, { projection }).sort({ timestamp: 1 }).toArray(),
+    collection.find({ ...matchTrend, metrics_version: { $gte: 4 } }, { projection }).sort({ timestamp: 1 }).toArray(),
   ]);
 
-  let usingLegacyMetrics = false;
   let docs = docsV4;
+  let trendDocs = trendDocsV4;
   if (!docs.length) {
-    usingLegacyMetrics = true;
     docs = await collection.find(matchMetrics, { projection }).sort({ timestamp: 1 }).toArray();
   }
-
-  let trendDocs = trendDocsV4;
   if (!trendDocs.length) {
     trendDocs = await collection.find(matchTrend, { projection }).sort({ timestamp: 1 }).toArray();
   }
 
-  const totalRequests = docs.length;
-  const successDocs = docs.filter((d) => d.ok);
   const failureDocs = docs.filter((d) => !d.ok);
-  const trendSuccessDocs = trendDocs.filter((d) => d.ok);
   const runTrendPoints = buildRunTrendPoints(trendDocs);
 
-  const ttftValues = collectMetricValues(successDocs, "ttft_ms");
-  const firstSseValues = collectMetricValues(successDocs, "first_sse_event_ms");
-  const firstReasoningValues = collectMetricValues(successDocs, "first_reasoning_token_ms");
-  const firstAnswerValues = collectMetricValues(successDocs, "first_answer_token_ms");
-  const sseToVisibleGapValues = collectMetricGapValues(successDocs, "ttft_ms", "first_sse_event_ms");
-  const thinkingWindowValues = collectMetricValues(successDocs, "thinking_window_ms");
-  const completedAnswerValues = collectMetricValues(successDocs, "time_to_completed_answer_ms");
+  const docsByModel = new Map<string, InferenceDoc[]>();
+  for (const doc of docs) {
+    const model = normalizeModel(doc.model);
+    if (!docsByModel.has(model)) docsByModel.set(model, []);
+    docsByModel.get(model)!.push(doc);
+  }
 
-  const providerTpsValues = successDocs
-    .map((d) => extractStableTps(d, "provider_output_tokens_per_second"))
-    .filter((v): v is number => v !== null);
+  const metricsByModel: Record<string, ModelMetrics> = {};
 
-  const providerTpsE2eValues = collectMetricValues(
-    successDocs,
-    "provider_output_tokens_per_second_end_to_end",
-  );
+  for (const [model, modelDocs] of docsByModel) {
+    const requests = modelDocs.length;
+    const successes = modelDocs.filter((d) => d.ok).length;
+    const failures = requests - successes;
+    const successDocs = modelDocs.filter((d) => d.ok);
 
-  const outputTpsValues = trendSuccessDocs
-    .map((d) => extractOutputTpsPostTtft(d))
-    .filter((v): v is number => v !== null);
+    const ttftValues = collectMetricValues(successDocs, "ttft_ms");
+    const providerE2eValues = collectMetricValues(successDocs, "provider_output_tokens_per_second_end_to_end");
+    const outputTpsValues = successDocs
+      .map((d) => extractOutputTpsPostTtft(d))
+      .filter((v): v is number => v !== null);
 
-  const visibleTpsValues = successDocs
-    .map((d) => extractStableTps(d, "visible_output_tokens_per_second"))
-    .filter((v): v is number => v !== null);
+    const avg = (values: number[]): number | null => {
+      if (!values.length) return null;
+      return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100;
+    };
 
-  const totalLatencyValues = collectMetricValues(successDocs, "total_latency_ms");
-  const cachedPromptTokenValues = collectTokenValues(docs, "cached_prompt_tokens");
+    metricsByModel[model] = {
+      requests,
+      successes,
+      failures,
+      success_rate_percent: requests > 0 ? Math.round((successes / requests) * 100 * 100) / 100 : null,
+      avg_ttft_ms: avg(ttftValues),
+      avg_output_tps: avg(outputTpsValues),
+      p95_ttft_ms: percentile(ttftValues, 0.95) != null ? Math.round(percentile(ttftValues, 0.95)! * 100) / 100 : null,
+      avg_provider_tps_end_to_end: avg(providerE2eValues),
+    };
+  }
 
-  const buckets = new Map<string, BucketData>();
+  for (const knownModel of KNOWN_MODELS) {
+    if (!metricsByModel[knownModel]) {
+      metricsByModel[knownModel] = {
+        requests: 0,
+        successes: 0,
+        failures: 0,
+        success_rate_percent: null,
+        avg_ttft_ms: null,
+        avg_output_tps: null,
+        p95_ttft_ms: null,
+        avg_provider_tps_end_to_end: null,
+      };
+    }
+  }
+
+  const bucketsByModel = new Map<string, Map<string, BucketData>>();
   for (const point of runTrendPoints) {
     const ts = point.timestamp;
+    const model = point.model;
 
     const bucket = new Date(
       Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate(), ts.getUTCHours(), 0, 0, 0),
     );
-    const key = bucket.toISOString();
+    const bucketKey = bucket.toISOString();
 
-    const existing = buckets.get(key) || initBucketData();
+    if (!bucketsByModel.has(model)) bucketsByModel.set(model, new Map());
+    const modelBuckets = bucketsByModel.get(model)!;
+    const existing = modelBuckets.get(bucketKey) || initBucketData();
 
     if (point.output_tps !== undefined && Number.isFinite(point.output_tps)) {
       existing.output_sum += point.output_tps;
@@ -541,153 +443,64 @@ export async function queryOverview(
       existing.ttft_sum += point.ttft_ms;
       existing.ttft_count += 1;
     }
-    if (point.visible_tps !== undefined && Number.isFinite(point.visible_tps)) {
-      existing.visible_sum += point.visible_tps;
-      existing.visible_count += 1;
-    }
-    if (point.provider_tps !== undefined && Number.isFinite(point.provider_tps)) {
-      existing.provider_sum += point.provider_tps;
-      existing.provider_count += 1;
-    }
 
-    buckets.set(key, existing);
+    modelBuckets.set(bucketKey, existing);
   }
-
-  const trend: Array<{
-    timestamp: string;
-    output_tps?: number;
-    ttft_ms?: number;
-    visible_tps?: number;
-    provider_tps?: number;
-  }> = [];
 
   const bucketSizeMs = 60 * 60 * 1000;
   const firstBucketMs = Math.floor(trendWindowStart.getTime() / bucketSizeMs) * bucketSizeMs;
   const lastBucketMs = Math.floor(trendWindowEnd.getTime() / bucketSizeMs) * bucketSizeMs;
 
-  let bucketCursor = new Date(firstBucketMs);
-  while (bucketCursor.getTime() <= lastBucketMs) {
-    const key = bucketCursor.toISOString();
-    const data = buckets.get(key);
+  const trendByModel: Record<string, Array<{ timestamp: string; output_tps?: number; ttft_ms?: number }>> = {};
 
-    trend.push({
-      timestamp: key,
-      output_tps:
-        data && data.output_count > 0
-          ? Math.round((data.output_sum / data.output_count) * 1000) / 1000
-          : undefined,
-      ttft_ms:
-        data && data.ttft_count > 0
-          ? Math.round((data.ttft_sum / data.ttft_count) * 100) / 100
-          : undefined,
-      visible_tps:
-        data && data.visible_count > 0
-          ? Math.round((data.visible_sum / data.visible_count) * 1000) / 1000
-          : undefined,
-      provider_tps:
-        data && data.provider_count > 0
-          ? Math.round((data.provider_sum / data.provider_count) * 1000) / 1000
-          : undefined,
-    });
+  for (const [model, modelBuckets] of bucketsByModel) {
+    const modelTrend: Array<{ timestamp: string; output_tps?: number; ttft_ms?: number }> = [];
 
-    bucketCursor = new Date(bucketCursor.getTime() + bucketSizeMs);
+    let bucketCursor = new Date(firstBucketMs);
+    while (bucketCursor.getTime() <= lastBucketMs) {
+      const bucketKey = bucketCursor.toISOString();
+      const data = modelBuckets.get(bucketKey);
+
+      modelTrend.push({
+        timestamp: bucketKey,
+        output_tps: data && data.output_count > 0 ? Math.round((data.output_sum / data.output_count) * 1000) / 1000 : undefined,
+        ttft_ms: data && data.ttft_count > 0 ? Math.round((data.ttft_sum / data.ttft_count) * 100) / 100 : undefined,
+      });
+
+      bucketCursor = new Date(bucketCursor.getTime() + bucketSizeMs);
+    }
+
+    trendByModel[model] = modelTrend;
+  }
+
+  for (const knownModel of KNOWN_MODELS) {
+    if (!trendByModel[knownModel]) {
+      const emptyTrend: Array<{ timestamp: string; output_tps?: number; ttft_ms?: number }> = [];
+      let bucketCursor = new Date(firstBucketMs);
+      while (bucketCursor.getTime() <= lastBucketMs) {
+        emptyTrend.push({ timestamp: bucketCursor.toISOString() });
+        bucketCursor = new Date(bucketCursor.getTime() + bucketSizeMs);
+      }
+      trendByModel[knownModel] = emptyTrend;
+    }
   }
 
   const errorBreakdown = new Map<string, number>();
   for (const d of failureDocs) {
-    const error = asDict(d.error);
-    const errorType = (error.type as string) || "unknown_error";
+    const errorType = d.error?.type || "unknown_error";
     errorBreakdown.set(errorType, (errorBreakdown.get(errorType) || 0) + 1);
   }
 
-  const modelSet = new Set<string>();
-  for (const doc of docs) {
-    if (typeof doc.model === "string" && doc.model.length > 0) modelSet.add(doc.model);
-  }
-  for (const doc of trendDocs) {
-    if (typeof doc.model === "string" && doc.model.length > 0) modelSet.add(doc.model);
-  }
-
-  if (modelSet.size === 0) {
-    const recentModelDocs = await collection
-      .find(
-        {
-          ...scopeFilter,
-          model: { $exists: true },
-        },
-        {
-          projection: { _id: 0, model: 1 },
-          sort: { timestamp: -1 },
-          limit: 256,
-        },
-      )
-      .toArray()
-      .catch(() => []);
-
-    for (const doc of recentModelDocs) {
-      if (typeof doc.model === "string" && doc.model.length > 0) modelSet.add(doc.model);
-    }
-  }
-
-  for (const defaultModel of DEFAULT_MODELS) {
-    modelSet.add(defaultModel);
-  }
-  const models = Array.from(modelSet).sort((a, b) => a.localeCompare(b));
-
+  const models = [...new Set([...docsByModel.keys(), ...KNOWN_MODELS])].sort((a, b) => a.localeCompare(b));
   const latestTs = docs[docs.length - 1]?.timestamp || trendDocs[trendDocs.length - 1]?.timestamp;
 
-  const p95OutputTps = percentile(outputTpsValues, 0.95);
-  const p95Ttft = percentile(ttftValues, 0.95);
-  const p95TotalLatency = percentile(totalLatencyValues, 0.95);
-
-  const avg = (values: number[]): number | null => {
-    if (!values.length) return null;
-    return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 100) / 100;
-  };
-
-  const errors = Array.from(errorBreakdown.entries())
-    .map(([type, count]) => ({ type, count }))
-    .sort((a, b) => b.count - a.count);
-
   return {
-    window: {
-      hours: requestedHours,
-      start: toIso(trendWindowStart),
-      end: toIso(trendWindowEnd),
-    },
-    totals: {
-      requests: totalRequests,
-      successes: successDocs.length,
-      failures: failureDocs.length,
-      success_rate_percent:
-        totalRequests > 0
-          ? Math.round((successDocs.length / totalRequests) * 100 * 100) / 100
-          : null,
-    },
-    metrics: {
-      avg_first_sse_event_ms: avg(firstSseValues),
-      avg_first_reasoning_token_ms: avg(firstReasoningValues),
-      avg_first_answer_token_ms: avg(firstAnswerValues),
-      avg_ttft_ms: avg(ttftValues),
-      avg_sse_to_visible_gap_ms: avg(sseToVisibleGapValues),
-      avg_thinking_window_ms: avg(thinkingWindowValues),
-      avg_time_to_completed_answer_ms: avg(completedAnswerValues),
-      avg_visible_tps: avg(visibleTpsValues.map((v) => Math.round(v * 1000) / 1000)),
-      avg_output_tps: avg(outputTpsValues.map((v) => Math.round(v * 1000) / 1000)),
-      avg_provider_tps: avg(providerTpsValues.map((v) => Math.round(v * 1000) / 1000)),
-      avg_provider_tps_end_to_end: avg(providerTpsE2eValues.map((v) => Math.round(v * 1000) / 1000)),
-      avg_cached_prompt_tokens: avg(cachedPromptTokenValues),
-      p95_output_tps: p95OutputTps != null ? Math.round(p95OutputTps * 1000) / 1000 : null,
-      p95_ttft_ms: p95Ttft != null ? Math.round(p95Ttft * 100) / 100 : null,
-      p95_total_latency_ms: p95TotalLatency != null ? Math.round(p95TotalLatency * 100) / 100 : null,
-    },
-    trend,
-    errors,
+    window: { hours: requestedHours, start: toIso(trendWindowStart), end: toIso(trendWindowEnd) },
+    metrics_by_model: metricsByModel,
+    trend_by_model: trendByModel,
+    errors: Array.from(errorBreakdown.entries()).map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
     models,
-    endpoint_families: ENDPOINT_FAMILIES,
-    selected_endpoint_family: endpointFamily,
-    selected_model: params.model || null,
-    using_legacy_metrics: usingLegacyMetrics,
+    endpoint_family: endpointFamily,
     latest_document_timestamp: toIso(latestTs instanceof Date ? latestTs : null),
     generated_at: toIso(new Date()),
   };
