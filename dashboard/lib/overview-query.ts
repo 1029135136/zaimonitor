@@ -275,11 +275,8 @@ export async function queryOverview(
   const collectionName = process.env.MONGO_COLLECTION || "inference_runs";
 
   const requestedHours = Math.max(params.hours, 24);
-  const scopeDays = Math.max(1, Math.ceil(requestedHours / 24));
+  const trendWindowDurationMs = requestedHours * 60 * 60 * 1000;
   const nowUtc = new Date();
-  const currentMidnightUtc = new Date(
-    Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate()),
-  );
   const metricsWindowStart = new Date(nowUtc.getTime() - 24 * 60 * 60 * 1000);
 
   const client = new MongoClient(mongoUri, { serverSelectionTimeoutMS: 10000 });
@@ -302,27 +299,18 @@ export async function queryOverview(
       .catch(() => null);
 
     const latestTrendTimestamp = latestTrendDoc?.timestamp;
-    let trendWindowEnd: Date;
-    if (latestTrendTimestamp instanceof Date) {
-      const latestDayStart = new Date(
-        Date.UTC(
-          latestTrendTimestamp.getUTCFullYear(),
-          latestTrendTimestamp.getUTCMonth(),
-          latestTrendTimestamp.getUTCDate(),
-        ),
-      );
-      trendWindowEnd = new Date(latestDayStart.getTime() + 24 * 60 * 60 * 1000);
-    } else {
-      trendWindowEnd = currentMidnightUtc;
-    }
-    const trendWindowStart = new Date(trendWindowEnd.getTime() - scopeDays * 24 * 60 * 60 * 1000);
+    const trendWindowEnd =
+      latestTrendTimestamp instanceof Date && !isNaN(latestTrendTimestamp.getTime())
+        ? new Date(latestTrendTimestamp)
+        : nowUtc;
+    const trendWindowStart = new Date(trendWindowEnd.getTime() - trendWindowDurationMs);
 
     const matchMetrics: Document = {
       timestamp: { $gte: metricsWindowStart, $lt: nowUtc },
       ...scopeFilter,
     };
     const matchTrend: Document = {
-      timestamp: { $gte: trendWindowStart, $lt: trendWindowEnd },
+      timestamp: { $gte: trendWindowStart, $lte: trendWindowEnd },
       ...scopeFilter,
     };
     const matchModels: Document = { ...scopeFilter };
@@ -454,8 +442,12 @@ export async function queryOverview(
       provider_tps?: number;
     }> = [];
 
-    let bucketCursor = new Date(trendWindowStart);
-    while (bucketCursor < trendWindowEnd) {
+    const bucketSizeMs = 60 * 60 * 1000;
+    const firstBucketMs = Math.floor(trendWindowStart.getTime() / bucketSizeMs) * bucketSizeMs;
+    const lastBucketMs = Math.floor(trendWindowEnd.getTime() / bucketSizeMs) * bucketSizeMs;
+
+    let bucketCursor = new Date(firstBucketMs);
+    while (bucketCursor.getTime() <= lastBucketMs) {
       const key = bucketCursor.toISOString();
       const data = buckets.get(key);
 
@@ -475,7 +467,7 @@ export async function queryOverview(
             : undefined,
       });
 
-      bucketCursor = new Date(bucketCursor.getTime() + 60 * 60 * 1000);
+      bucketCursor = new Date(bucketCursor.getTime() + bucketSizeMs);
     }
 
     const errorBreakdown = new Map<string, number>();
@@ -511,7 +503,7 @@ export async function queryOverview(
 
     return {
       window: {
-        hours: scopeDays * 24,
+        hours: requestedHours,
         start: toIso(trendWindowStart),
         end: toIso(trendWindowEnd),
       },

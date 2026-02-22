@@ -104,10 +104,11 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
       const ts = parseIso(point.timestamp);
       if (!ts) return null;
       const xRatio = (ts.getTime() - domainStartMs) / domainSpanMs;
+      const clampedXRatio = Math.max(0, Math.min(1, xRatio));
       const value = point[effectiveMetric];
       const numericValue = typeof value === "number" && Number.isFinite(value) ? value : null;
       return {
-        x: xStart + xRatio * plotWidth,
+        x: xStart + clampedXRatio * plotWidth,
         value: numericValue,
       };
     });
@@ -190,7 +191,7 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Throughput Trend</h2>
-          <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">X-axis is pinned to UTC day boundaries for the selected timeframe.</p>
+          <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">X-axis uses a rolling window ending at the latest filtered measurement.</p>
         </div>
         <span className="rounded-full bg-[color:var(--accent-sky)]/50 px-3 py-1 font-mono text-xs text-[color:var(--card-foreground)]">
           {hours}h window
