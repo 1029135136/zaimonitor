@@ -9,7 +9,7 @@ Next.js dashboard for visualizing inference metrics written by `script/monitor_z
 - Success/failure rates and p95 TTFT
 - Side-by-side Coding Plan vs Standard API comparison in KPI cards and trend lines
 - Avg cached prompt tokens per run (from `usage.prompt_tokens_details.cached_tokens`)
-- Schedule status (`:30` each hour, UTC)
+- Schedule status (`:10` each hour, UTC)
 
 ## Data flow
 

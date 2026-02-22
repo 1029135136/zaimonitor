@@ -50,7 +50,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(payload, {
       headers: {
-        "cache-control": "private, max-age=0, s-maxage=60, stale-while-revalidate=60",
+        "cache-control": "private, no-store",
       },
     });
   } catch (error) {

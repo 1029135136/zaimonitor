@@ -32,11 +32,11 @@ npm run dev
 ```
 
 ## Scheduler
-Run the collector on `:30` (cron). The dashboard can pull shortly after completion.
+Run the collector on `:10` (cron). The dashboard can pull shortly after completion.
 
 GitHub Actions cadence:
 - `coding_plan` workflow: hourly (`10 * * * *`)
-- `official_api` workflow: every 2 hours (`40 */2 * * *`)
+- `official_api` workflow: every 2 hours (`10 */2 * * *`)
 
 Each run executes both models:
 - `glm-5`
@@ -44,7 +44,7 @@ Each run executes both models:
 
 Example:
 ```bash
-30 * * * * cd /home/bieggerm/dev/zaimonitor/script && python3 monitor_zai_inference.py >> /tmp/zaimonitor.log 2>&1
+10 * * * * cd /home/bieggerm/dev/zaimonitor/script && python3 monitor_zai_inference.py >> /tmp/zaimonitor.log 2>&1
 ```
 
 ## Metrics (v4)
