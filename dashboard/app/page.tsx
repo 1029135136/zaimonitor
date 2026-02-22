@@ -6,7 +6,7 @@ import { OverviewHeader } from "@/components/overview-header";
 import { OverviewKpis } from "@/components/overview-kpis";
 import { OverviewAdditionalMetrics } from "@/components/overview-additional-metrics";
 import { OverviewTrend } from "@/components/overview-trend";
-import { formatEta, formatUtc, msToSecondsLabel } from "@/lib/overview-format";
+import { msToSecondsLabel } from "@/lib/overview-format";
 import type { KpiItem, OverviewResponse } from "@/lib/overview-types";
 
 export default function Home() {
@@ -85,8 +85,8 @@ export default function Home() {
       tone: "bg-[color:var(--accent-gold)]/60",
     },
     {
-      label: "p95 Latency",
-      value: msToSecondsLabel(data?.metrics.p95_total_latency_ms ?? null),
+      label: "p95 TTFT",
+      value: msToSecondsLabel(data?.metrics.p95_ttft_ms ?? null),
       delta: data?.totals.requests != null ? `from ${data.totals.requests} requests (24h)` : "-",
       tone: "bg-[color:var(--accent-rose)]/58",
     },

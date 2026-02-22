@@ -252,6 +252,7 @@ export interface OverviewResult {
     avg_provider_tps: number | null;
     avg_provider_tps_end_to_end: number | null;
     avg_cached_prompt_tokens: number | null;
+    p95_ttft_ms: number | null;
     p95_total_latency_ms: number | null;
   };
   trend: Array<{
@@ -545,6 +546,9 @@ export async function queryOverview(
         avg_provider_tps: avg(providerTpsValues.map((v) => Math.round(v * 1000) / 1000)),
         avg_provider_tps_end_to_end: avg(providerTpsE2eValues.map((v) => Math.round(v * 1000) / 1000)),
         avg_cached_prompt_tokens: avg(cachedPromptTokenValues),
+        p95_ttft_ms: percentile(ttftValues, 0.95)
+          ? Math.round(percentile(ttftValues, 0.95)! * 100) / 100
+          : null,
         p95_total_latency_ms: percentile(totalLatencyValues, 0.95)
           ? Math.round(percentile(totalLatencyValues, 0.95)! * 100) / 100
           : null,

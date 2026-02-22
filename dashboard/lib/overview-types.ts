@@ -35,6 +35,7 @@ export type OverviewResponse = {
     avg_provider_tps: number | null;
     avg_provider_tps_end_to_end: number | null;
     avg_cached_prompt_tokens: number | null;
+    p95_ttft_ms: number | null;
     p95_total_latency_ms: number | null;
   };
   trend: TrendPoint[];
