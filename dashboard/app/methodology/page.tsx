@@ -34,6 +34,10 @@ export default function MethodologyPage() {
             for each run.
           </li>
         </ul>
+        <p className="mt-4 rounded-xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 px-4 py-3 text-xs text-[color:var(--muted-foreground)]">
+          Sampling cadence: Coding Plan is collected hourly, while Standard API is collected every 2 hours to reduce
+          paid API usage.
+        </p>
       </section>
 
       <section className="paper-panel paper-noise fade-up fade-up-delay-2 rounded-3xl p-6 md:p-8">

@@ -46,6 +46,8 @@ interface InferenceDoc extends Document {
 interface BucketData {
   output_sum: number;
   output_count: number;
+  ttft_sum: number;
+  ttft_count: number;
   visible_sum: number;
   visible_count: number;
   provider_sum: number;
@@ -288,12 +290,14 @@ export interface OverviewResult {
     avg_provider_tps: number | null;
     avg_provider_tps_end_to_end: number | null;
     avg_cached_prompt_tokens: number | null;
+    p95_output_tps: number | null;
     p95_ttft_ms: number | null;
     p95_total_latency_ms: number | null;
   };
   trend: Array<{
     timestamp: string;
     output_tps?: number;
+    ttft_ms?: number;
     visible_tps?: number;
     provider_tps?: number;
   }>;
@@ -456,6 +460,8 @@ export async function queryOverview(
   const buckets = new Map<string, BucketData>();
   for (const d of trendSuccessDocs) {
     const outputTps = extractOutputTpsPostTtft(d);
+    const ttftRaw = d.metrics?.ttft_ms;
+    const ttft = ttftRaw === undefined || ttftRaw === null ? null : Number(ttftRaw);
     const visibleTps = extractStableTps(d, "visible_output_tokens_per_second");
     const providerTps = extractStableTps(d, "provider_output_tokens_per_second");
     const ts = d.timestamp;
@@ -469,6 +475,8 @@ export async function queryOverview(
     const existing = buckets.get(key) || {
       output_sum: 0,
       output_count: 0,
+      ttft_sum: 0,
+      ttft_count: 0,
       visible_sum: 0,
       visible_count: 0,
       provider_sum: 0,
@@ -478,6 +486,10 @@ export async function queryOverview(
     if (outputTps !== null) {
       existing.output_sum += outputTps;
       existing.output_count += 1;
+    }
+    if (ttft !== null && !isNaN(ttft)) {
+      existing.ttft_sum += ttft;
+      existing.ttft_count += 1;
     }
     if (visibleTps !== null) {
       existing.visible_sum += visibleTps;
@@ -494,6 +506,7 @@ export async function queryOverview(
   const trend: Array<{
     timestamp: string;
     output_tps?: number;
+    ttft_ms?: number;
     visible_tps?: number;
     provider_tps?: number;
   }> = [];
@@ -512,6 +525,10 @@ export async function queryOverview(
       output_tps:
         data && data.output_count > 0
           ? Math.round((data.output_sum / data.output_count) * 1000) / 1000
+          : undefined,
+      ttft_ms:
+        data && data.ttft_count > 0
+          ? Math.round((data.ttft_sum / data.ttft_count) * 100) / 100
           : undefined,
       visible_tps:
         data && data.visible_count > 0
@@ -570,6 +587,7 @@ export async function queryOverview(
   const latestTs = docs[docs.length - 1]?.timestamp || trendDocs[trendDocs.length - 1]?.timestamp;
 
   const nextRun = nextThirtyMark(nowUtc);
+  const p95OutputTps = percentile(outputTpsValues, 0.95);
   const p95Ttft = percentile(ttftValues, 0.95);
   const p95TotalLatency = percentile(totalLatencyValues, 0.95);
 
@@ -610,6 +628,7 @@ export async function queryOverview(
       avg_provider_tps: avg(providerTpsValues.map((v) => Math.round(v * 1000) / 1000)),
       avg_provider_tps_end_to_end: avg(providerTpsE2eValues.map((v) => Math.round(v * 1000) / 1000)),
       avg_cached_prompt_tokens: avg(cachedPromptTokenValues),
+      p95_output_tps: p95OutputTps != null ? Math.round(p95OutputTps * 1000) / 1000 : null,
       p95_ttft_ms: p95Ttft != null ? Math.round(p95Ttft * 100) / 100 : null,
       p95_total_latency_ms: p95TotalLatency != null ? Math.round(p95TotalLatency * 100) / 100 : null,
     },

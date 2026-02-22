@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { TrendPoint } from "@/lib/overview-types";
 
-type TrendMetricKey = "output_tps" | "visible_tps" | "provider_tps";
+type TrendMetricKey = "output_tps" | "ttft_ms";
 
 type OverviewTrendProps = {
   hours: string;
@@ -13,18 +13,24 @@ type OverviewTrendProps = {
 
 const METRIC_OPTIONS: { key: TrendMetricKey; label: string; stroke: string }[] = [
   { key: "output_tps", label: "Output TPS", stroke: "var(--chart-1)" },
-  { key: "visible_tps", label: "Visible TPS", stroke: "var(--chart-2)" },
-  { key: "provider_tps", label: "Provider TPS", stroke: "var(--chart-3)" },
+  { key: "ttft_ms", label: "TTFT", stroke: "var(--chart-5)" },
 ];
 
-function formatNumber(value: number | null): string {
+function formatAxisValue(metric: TrendMetricKey, value: number | null): string {
   if (value == null || !Number.isFinite(value)) return "-";
+  if (metric === "ttft_ms") return `${(value / 1000).toFixed(2)}s`;
   return value.toFixed(2);
 }
 
-function formatRange(min: number | null, max: number | null): string {
+function formatMetricValue(metric: TrendMetricKey, value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "-";
+  if (metric === "ttft_ms") return `${(value / 1000).toFixed(2)}s`;
+  return value.toFixed(2);
+}
+
+function formatMetricRange(metric: TrendMetricKey, min: number | null, max: number | null): string {
   if (min == null || max == null) return "-";
-  return `${formatNumber(min)} - ${formatNumber(max)}`;
+  return `${formatMetricValue(metric, min)} - ${formatMetricValue(metric, max)}`;
 }
 
 type SeriesStats = {
@@ -89,18 +95,20 @@ function formatUtcDate(raw: string | null): string {
   });
 }
 
-export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, windowEnd }: OverviewTrendProps) {
+export function OverviewTrend({
+  hours,
+  trend,
+  comparisonTrend,
+  windowStart,
+  windowEnd,
+}: OverviewTrendProps) {
   const [metric, setMetric] = useState<TrendMetricKey>("output_tps");
   const metricHasData = useMemo(() => {
     const hasDataFor = (series: TrendPoint[], key: TrendMetricKey) =>
       series.some((point) => typeof point[key] === "number" && Number.isFinite(point[key]));
     return {
-      output_tps:
-        hasDataFor(trend, "output_tps") || hasDataFor(comparisonTrend, "output_tps"),
-      visible_tps:
-        hasDataFor(trend, "visible_tps") || hasDataFor(comparisonTrend, "visible_tps"),
-      provider_tps:
-        hasDataFor(trend, "provider_tps") || hasDataFor(comparisonTrend, "provider_tps"),
+      output_tps: hasDataFor(trend, "output_tps") || hasDataFor(comparisonTrend, "output_tps"),
+      ttft_ms: hasDataFor(trend, "ttft_ms") || hasDataFor(comparisonTrend, "ttft_ms"),
     };
   }, [comparisonTrend, trend]);
 
@@ -108,11 +116,9 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
     ? metric
     : metricHasData.output_tps
       ? "output_tps"
-      : metricHasData.visible_tps
-        ? "visible_tps"
-        : metricHasData.provider_tps
-          ? "provider_tps"
-          : metric;
+      : metricHasData.ttft_ms
+        ? "ttft_ms"
+        : metric;
 
   const activeOption = METRIC_OPTIONS.find((option) => option.key === effectiveMetric) ?? METRIC_OPTIONS[0];
 
@@ -121,14 +127,16 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
     const end = parseIso(windowEnd);
     if (!start || !end || end <= start) {
       return {
-        min: null,
-        max: null,
+        axisMin: null,
+        axisMax: null,
         axisAvg: null,
         primaryStats: computeSeriesStats([]),
         comparisonStats: computeSeriesStats([]),
         primaryPathSegments: [] as string[],
         comparisonPathSegments: [] as string[],
         xTicks: [] as { x: number; label: string }[],
+        yTop: 18,
+        yBottom: 188,
         hasData: false,
       };
     }
@@ -150,8 +158,8 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
         if (!ts) return null;
         const xRatio = (ts.getTime() - domainStartMs) / domainSpanMs;
         const clampedXRatio = Math.max(0, Math.min(1, xRatio));
-        const value = point[effectiveMetric];
-        const numericValue = typeof value === "number" && Number.isFinite(value) ? value : null;
+        const raw = point[effectiveMetric];
+        const numericValue = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
         return {
           x: xStart + clampedXRatio * plotWidth,
           value: numericValue,
@@ -160,16 +168,16 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
 
     const primaryPoints = toPoints(trend);
     const comparisonPoints = toPoints(comparisonTrend);
-
     const primaryValues = primaryPoints
       .map((point) => point?.value ?? null)
       .filter((value): value is number => value != null);
-
     const comparisonValues = comparisonPoints
       .map((point) => point?.value ?? null)
       .filter((value): value is number => value != null);
 
-    const nonNullValues = [...primaryValues, ...comparisonValues];
+    const values = [...primaryPoints, ...comparisonPoints]
+      .map((point) => point?.value ?? null)
+      .filter((value): value is number => value != null);
 
     const rangeHours = domainSpanMs / 3_600_000;
     const tickStepHours = rangeHours <= 24 ? 6 : 24;
@@ -186,26 +194,27 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
       xTicks.push({ x, label });
     }
 
-    if (!nonNullValues.length) {
+    if (!values.length) {
       return {
-        yTop,
-        yBottom,
-        min: null,
-        max: null,
+        axisMin: null,
+        axisMax: null,
         axisAvg: null,
         primaryStats: computeSeriesStats([]),
         comparisonStats: computeSeriesStats([]),
         primaryPathSegments: [] as string[],
         comparisonPathSegments: [] as string[],
         xTicks,
+        yTop,
+        yBottom,
         hasData: false,
       };
     }
 
-    const min = Math.min(...nonNullValues);
-    const max = Math.max(...nonNullValues);
-    const axisAvg = nonNullValues.reduce((sum, value) => sum + value, 0) / nonNullValues.length;
-    const yRange = Math.max(max - min, 0.001);
+    const axisMin = Math.min(...values);
+    const axisMax = Math.max(...values);
+    const axisAvg = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const yRange = Math.max(axisMax - axisMin, 0.001);
+    const toY = (value: number) => yBottom - ((value - axisMin) / yRange) * plotHeight;
 
     const toPathSegments = (points: Array<{ x: number; value: number | null } | null>) => {
       const pathSegments: string[] = [];
@@ -218,7 +227,7 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
           }
           continue;
         }
-        const y = yBottom - ((point.value - min) / yRange) * plotHeight;
+        const y = toY(point.value);
         segment += `${segment ? " L" : "M"}${point.x.toFixed(1)},${y.toFixed(1)}`;
       }
       if (segment) {
@@ -228,16 +237,16 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
     };
 
     return {
-      yTop,
-      yBottom,
-      min,
-      max,
+      axisMin,
+      axisMax,
       axisAvg,
       primaryStats: computeSeriesStats(primaryValues),
       comparisonStats: computeSeriesStats(comparisonValues),
       primaryPathSegments: toPathSegments(primaryPoints),
       comparisonPathSegments: toPathSegments(comparisonPoints),
       xTicks,
+      yTop,
+      yBottom,
       hasData: true,
     };
   }, [comparisonTrend, effectiveMetric, trend, windowEnd, windowStart]);
@@ -246,8 +255,8 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
     <article className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Throughput Trend</h2>
-          <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">X-axis uses a rolling window ending at the latest filtered measurement.</p>
+          <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Trends</h2>
+          <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">Output TPS and TTFT over a rolling UTC window.</p>
         </div>
         <span className="rounded-full bg-[color:var(--accent-sky)]/50 px-3 py-1 font-mono text-xs text-[color:var(--card-foreground)]">
           {hours}h window
@@ -293,12 +302,12 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
         ) : (
           <>
             <svg viewBox="0 0 660 230" className="h-56 w-full" role="img" aria-label={`${activeOption.label} trend`}>
-              <line x1="16" y1={chart.yTop!} x2="644" y2={chart.yTop!} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
-              <line x1="16" y1={(chart.yTop! + chart.yBottom!) / 2} x2="644" y2={(chart.yTop! + chart.yBottom!) / 2} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
-              <line x1="16" y1={chart.yBottom!} x2="644" y2={chart.yBottom!} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
+              <line x1="16" y1={chart.yTop} x2="644" y2={chart.yTop} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
+              <line x1="16" y1={(chart.yTop + chart.yBottom) / 2} x2="644" y2={(chart.yTop + chart.yBottom) / 2} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
+              <line x1="16" y1={chart.yBottom} x2="644" y2={chart.yBottom} stroke="var(--border)" strokeDasharray="4 6" strokeWidth="1" />
               {chart.xTicks.map((tick) => (
                 <g key={tick.x.toFixed(1)}>
-                  <line x1={tick.x} y1={chart.yTop!} x2={tick.x} y2={chart.yBottom!} stroke="var(--border)" strokeDasharray="3 6" strokeWidth="1" />
+                  <line x1={tick.x} y1={chart.yTop} x2={tick.x} y2={chart.yBottom} stroke="var(--border)" strokeDasharray="3 6" strokeWidth="1" />
                   <text x={tick.x} y="214" textAnchor="middle" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
                     {tick.label}
                   </text>
@@ -318,19 +327,19 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
               {chart.primaryPathSegments.map((segment) => (
                 <path key={segment} d={segment} fill="none" stroke={activeOption.stroke} strokeWidth="3" strokeLinecap="round" />
               ))}
-              <text x="648" y={chart.yTop! + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
-                {formatNumber(chart.max)}
+              <text x="648" y={chart.yTop + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
+                {formatAxisValue(effectiveMetric, chart.axisMax)}
               </text>
               <text
                 x="648"
-                y={(chart.yTop! + chart.yBottom!) / 2 + 4}
+                y={(chart.yTop + chart.yBottom) / 2 + 4}
                 textAnchor="end"
                 className="fill-[color:var(--muted-foreground)] font-mono text-[10px]"
               >
-                {formatNumber(chart.axisAvg)}
+                {formatAxisValue(effectiveMetric, chart.axisAvg)}
               </text>
-              <text x="648" y={chart.yBottom! + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
-                {formatNumber(chart.min)}
+              <text x="648" y={chart.yBottom + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
+                {formatAxisValue(effectiveMetric, chart.axisMin)}
               </text>
             </svg>
 
@@ -346,21 +355,18 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
         )}
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+      <div
+        className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+      >
         <MetricTile
           label="Latest"
-          value={formatNumber(chart.primaryStats.latest)}
-          secondaryValue={formatNumber(chart.comparisonStats.latest)}
-        />
-        <MetricTile
-          label="Average"
-          value={formatNumber(chart.primaryStats.avg)}
-          secondaryValue={formatNumber(chart.comparisonStats.avg)}
+          value={formatMetricValue(effectiveMetric, chart.primaryStats.latest)}
+          secondaryValue={formatMetricValue(effectiveMetric, chart.comparisonStats.latest)}
         />
         <MetricTile
           label="Range"
-          value={formatRange(chart.primaryStats.min, chart.primaryStats.max)}
-          secondaryValue={formatRange(chart.comparisonStats.min, chart.comparisonStats.max)}
+          value={formatMetricRange(effectiveMetric, chart.primaryStats.min, chart.primaryStats.max)}
+          secondaryValue={formatMetricRange(effectiveMetric, chart.comparisonStats.min, chart.comparisonStats.max)}
         />
         <MetricTile
           label="Drift"
