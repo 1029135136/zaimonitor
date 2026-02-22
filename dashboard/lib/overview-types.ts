@@ -47,7 +47,6 @@ export type OverviewResponse = {
   using_legacy_metrics: boolean;
   latest_document_timestamp: string | null;
   schedule: {
-    cadence_label: string;
     next_run_utc: string;
   };
   generated_at: string;

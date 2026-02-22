@@ -1,11 +1,10 @@
 import { formatUtc } from "@/lib/overview-format";
 
 type OverviewHeaderProps = {
-  scheduleText: string;
   latestDocumentTimestamp: string | null;
 };
 
-export function OverviewHeader({ scheduleText, latestDocumentTimestamp }: OverviewHeaderProps) {
+export function OverviewHeader({latestDocumentTimestamp }: OverviewHeaderProps) {
   return (
     <header className="paper-panel paper-noise fade-up rounded-3xl p-6 md:p-8">
       <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
@@ -21,10 +20,6 @@ export function OverviewHeader({ scheduleText, latestDocumentTimestamp }: Overvi
           </p>
         </div>
         <div className="space-y-2 self-start md:self-auto">
-          <div className="flex items-center gap-2 rounded-full border border-[color:var(--border)] bg-[color:var(--paper)]/75 px-3 py-2 text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
-            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-600" />
-            {scheduleText}
-          </div>
           <p className="font-mono text-xs text-[color:var(--muted-foreground)]">
             latest run: {formatUtc(latestDocumentTimestamp)} UTC
           </p>

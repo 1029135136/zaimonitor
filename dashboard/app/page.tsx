@@ -113,8 +113,6 @@ export default function Home() {
     };
   }, [hours, model]);
 
-  const scheduleText =
-    data?.schedule?.cadence_label ?? comparisonData?.schedule?.cadence_label ?? "Updates every four hours";
   const allModels = Array.from(new Set([...(data?.models ?? []), ...(comparisonData?.models ?? [])]));
   const latestDocumentTimestamp = maxIso(data?.latest_document_timestamp, comparisonData?.latest_document_timestamp);
   const trendWindowStart = minIso(data?.window.start, comparisonData?.window.start);
@@ -165,7 +163,7 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-5 py-6 md:px-10 md:py-10">
-      <OverviewHeader scheduleText={scheduleText} latestDocumentTimestamp={latestDocumentTimestamp} />
+      <OverviewHeader latestDocumentTimestamp={latestDocumentTimestamp} />
 
       <OverviewFilters
         hours={hours}

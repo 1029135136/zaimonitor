@@ -269,7 +269,6 @@ export interface OverviewResult {
   using_legacy_metrics: boolean;
   latest_document_timestamp: string | null;
   schedule: {
-    cadence_label: string;
     next_run_utc: string | null;
   };
   generated_at: string | null;
@@ -507,7 +506,6 @@ export async function queryOverview(
     const latestTs = docs[docs.length - 1]?.timestamp || trendDocs[trendDocs.length - 1]?.timestamp;
 
     const nextRun = nextThirtyMark(nowUtc);
-    const cadenceLabel = "Updates every four hours";
 
     const avg = (values: number[]): number | null => {
       if (!values.length) return null;
@@ -562,7 +560,6 @@ export async function queryOverview(
       using_legacy_metrics: usingLegacyMetrics,
       latest_document_timestamp: toIso(latestTs instanceof Date ? latestTs : null),
       schedule: {
-        cadence_label: cadenceLabel,
         next_run_utc: toIso(nextRun),
       },
       generated_at: toIso(new Date()),
