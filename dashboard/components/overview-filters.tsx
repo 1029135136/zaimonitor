@@ -12,10 +12,50 @@ type OverviewFiltersProps = {
   onEndpointFamilyChange: (value: string) => void;
 };
 
+const WINDOW_OPTIONS = [
+  { value: "24", label: "24h" },
+  { value: "168", label: "7d" },
+] as const;
+
+const MODEL_OPTIONS = [
+  { value: "glm-5", label: "glm-5" },
+  { value: "glm-4.7", label: "glm-4.7" },
+] as const;
+
 function endpointFamilyLabel(value: string): string {
   if (value === "coding_plan") return "Coding Plan API";
   if (value === "official_api") return "Normal API";
   return value;
+}
+
+type FlickSwitchProps = {
+  options: readonly { value: string; label: string }[];
+  value: string;
+  onChange: (value: string) => void;
+};
+
+function FlickSwitch({ options, value, onChange }: FlickSwitchProps) {
+  return (
+    <div className="inline-flex items-center rounded-xl border-2 border-[color:var(--card-foreground)]/22 bg-[color:var(--paper)]/65 p-1 shadow-[0_10px_16px_-14px_rgba(20,25,28,0.55)]">
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`inline-flex h-8 items-center justify-center rounded-lg px-3 text-sm leading-none font-semibold transition ${
+              selected
+                ? "bg-[color:var(--accent-gold)] text-[color:var(--card-foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_8px_16px_-14px_rgba(20,25,28,0.65)]"
+                : "text-[color:var(--muted-foreground)] hover:bg-[color:var(--accent-sky)]/35"
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export function OverviewFilters({
@@ -29,6 +69,9 @@ export function OverviewFilters({
   onModelChange,
   onEndpointFamilyChange,
 }: OverviewFiltersProps) {
+  const availableModels = MODEL_OPTIONS.filter((option) => models.includes(option.value));
+  const modelOptions = availableModels.length ? availableModels : MODEL_OPTIONS;
+
   return (
     <section className="paper-panel paper-noise fade-up fade-up-delay-1 rounded-2xl p-4 md:p-5">
       <div className="flex flex-col gap-4">
@@ -58,40 +101,16 @@ export function OverviewFilters({
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-4">
             <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
               Trend Window
             </label>
-            <div className="relative">
-              <select
-                value={hours}
-                onChange={(event) => onHoursChange(event.target.value)}
-                className="appearance-none rounded-xl border-2 border-[color:var(--card-foreground)]/25 bg-[color:var(--accent-gold)]/45 px-3 py-2 pr-9 text-sm font-medium text-[color:var(--card-foreground)] shadow-[0_8px_16px_-12px_rgba(20,25,28,0.45),inset_0_1px_0_rgba(255,255,255,0.6)] transition hover:border-[color:var(--card-foreground)]/45 focus:border-[color:var(--ring)] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]/30"
-              >
-                <option value="24">24h</option>
-                <option value="168">7d</option>
-              </select>
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[color:var(--card-foreground)]/75">▾</span>
-            </div>
+            <FlickSwitch options={WINDOW_OPTIONS} value={hours} onChange={onHoursChange} />
 
             <label className="ml-2 text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
               Model
             </label>
-            <div className="relative">
-              <select
-                value={model}
-                onChange={(event) => onModelChange(event.target.value)}
-                className="appearance-none rounded-xl border-2 border-[color:var(--card-foreground)]/25 bg-[color:var(--accent-sky)]/42 px-3 py-2 pr-9 text-sm font-medium text-[color:var(--card-foreground)] shadow-[0_8px_16px_-12px_rgba(20,25,28,0.45),inset_0_1px_0_rgba(255,255,255,0.6)] transition hover:border-[color:var(--card-foreground)]/45 focus:border-[color:var(--ring)] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]/30"
-              >
-                <option value="all">all</option>
-                {models.map((modelOption) => (
-                  <option key={modelOption} value={modelOption}>
-                    {modelOption}
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[color:var(--card-foreground)]/75">▾</span>
-            </div>
+            <FlickSwitch options={modelOptions} value={model} onChange={onModelChange} />
           </div>
 
           <p className="font-mono text-xs text-[color:var(--muted-foreground)]">

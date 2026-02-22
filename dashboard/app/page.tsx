@@ -11,7 +11,7 @@ import type { KpiItem, OverviewResponse } from "@/lib/overview-types";
 
 export default function Home() {
   const [hours, setHours] = useState("24");
-  const [model, setModel] = useState("all");
+  const [model, setModel] = useState("glm-5");
   const [endpointFamily, setEndpointFamily] = useState("coding_plan");
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,9 +27,7 @@ export default function Home() {
 
         const params = new URLSearchParams({ hours });
         params.set("endpoint_family", endpointFamily);
-        if (model !== "all") {
-          params.set("model", model);
-        }
+        params.set("model", model);
 
         const response = await fetch(`/api/overview?${params.toString()}`, {
           cache: "no-store",
