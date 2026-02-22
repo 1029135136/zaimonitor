@@ -153,6 +153,38 @@ def _extract_output_tps_post_ttft(doc: dict[str, Any]) -> float | None:
     return (completion_tokens - 1) / ((total_latency_ms - ttft_ms) / 1000)
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _collect_metric_values(docs: list[dict[str, Any]], key: str) -> list[float]:
+    values: list[float] = []
+    for doc in docs:
+        raw = _as_dict(doc.get("metrics")).get(key)
+        if raw is None:
+            continue
+        try:
+            values.append(float(raw))
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
+def _collect_metric_gap_values(docs: list[dict[str, Any]], left_key: str, right_key: str) -> list[float]:
+    values: list[float] = []
+    for doc in docs:
+        metrics = _as_dict(doc.get("metrics"))
+        left_raw = metrics.get(left_key)
+        right_raw = metrics.get(right_key)
+        if left_raw is None or right_raw is None:
+            continue
+        try:
+            values.append(float(left_raw) - float(right_raw))
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hours", type=float, default=24.0)
@@ -282,53 +314,20 @@ def main() -> int:
     failure_docs = [d for d in docs if not d.get("ok")]
     trend_success_docs = [d for d in trend_docs if d.get("ok")]
 
-    ttft_values = [
-        float(d.get("metrics", {}).get("ttft_ms"))
-        for d in success_docs
-        if d.get("metrics", {}).get("ttft_ms") is not None
-    ]
-    first_sse_values = [
-        float(d.get("metrics", {}).get("first_sse_event_ms"))
-        for d in success_docs
-        if d.get("metrics", {}).get("first_sse_event_ms") is not None
-    ]
-    first_reasoning_values = [
-        float(d.get("metrics", {}).get("first_reasoning_token_ms"))
-        for d in success_docs
-        if d.get("metrics", {}).get("first_reasoning_token_ms") is not None
-    ]
-    first_answer_values = [
-        float(d.get("metrics", {}).get("first_answer_token_ms"))
-        for d in success_docs
-        if d.get("metrics", {}).get("first_answer_token_ms") is not None
-    ]
-    sse_to_visible_gap_values = [
-        float(d.get("metrics", {}).get("ttft_ms")) - float(d.get("metrics", {}).get("first_sse_event_ms"))
-        for d in success_docs
-        if d.get("metrics", {}).get("ttft_ms") is not None
-        and d.get("metrics", {}).get("first_sse_event_ms") is not None
-    ]
-    thinking_window_values = [
-        float(d.get("metrics", {}).get("thinking_window_ms"))
-        for d in success_docs
-        if d.get("metrics", {}).get("thinking_window_ms") is not None
-    ]
-    completed_answer_values = [
-        float(d.get("metrics", {}).get("time_to_completed_answer_ms"))
-        for d in success_docs
-        if d.get("metrics", {}).get("time_to_completed_answer_ms") is not None
-    ]
+    ttft_values = _collect_metric_values(success_docs, "ttft_ms")
+    first_sse_values = _collect_metric_values(success_docs, "first_sse_event_ms")
+    first_reasoning_values = _collect_metric_values(success_docs, "first_reasoning_token_ms")
+    first_answer_values = _collect_metric_values(success_docs, "first_answer_token_ms")
+    sse_to_visible_gap_values = _collect_metric_gap_values(success_docs, "ttft_ms", "first_sse_event_ms")
+    thinking_window_values = _collect_metric_values(success_docs, "thinking_window_ms")
+    completed_answer_values = _collect_metric_values(success_docs, "time_to_completed_answer_ms")
     provider_tps_values = [
         value
         for d in success_docs
         for value in [_extract_stable_tps(d, "provider_output_tokens_per_second")]
         if value is not None
     ]
-    provider_tps_e2e_values = [
-        float(d.get("metrics", {}).get("provider_output_tokens_per_second_end_to_end"))
-        for d in success_docs
-        if d.get("metrics", {}).get("provider_output_tokens_per_second_end_to_end") is not None
-    ]
+    provider_tps_e2e_values = _collect_metric_values(success_docs, "provider_output_tokens_per_second_end_to_end")
     output_tps_values = [
         value
         for d in success_docs
@@ -341,11 +340,7 @@ def main() -> int:
         for value in [_extract_stable_tps(d, "visible_output_tokens_per_second")]
         if value is not None
     ]
-    total_latency_values = [
-        float(d.get("metrics", {}).get("total_latency_ms"))
-        for d in success_docs
-        if d.get("metrics", {}).get("total_latency_ms") is not None
-    ]
+    total_latency_values = _collect_metric_values(success_docs, "total_latency_ms")
 
     buckets: dict[str, dict[str, float]] = defaultdict(
         lambda: {
@@ -399,7 +394,7 @@ def main() -> int:
 
     error_breakdown: dict[str, int] = defaultdict(int)
     for d in failure_docs:
-        error_type = d.get("error", {}).get("type") or "unknown_error"
+        error_type = _as_dict(d.get("error")).get("type") or "unknown_error"
         error_breakdown[error_type] += 1
 
     models = sorted(
@@ -414,7 +409,7 @@ def main() -> int:
     latest_ts = docs[-1].get("timestamp") if docs else (trend_docs[-1].get("timestamp") if trend_docs else None)
 
     next_run = _next_thirty_mark(now_utc)
-    cadence_label = "Updates every hour""
+    cadence_label = "Updates every hour"
 
     payload = {
         "window": {

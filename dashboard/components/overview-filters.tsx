@@ -108,16 +108,16 @@ export function OverviewFilters({
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
+              <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase mr-2">
                 Trend Window
               </label>
-              <FlickSwitch options={WINDOW_OPTIONS} value={hours} onChange={onHoursChange} className="w-full ml-2 sm:ml-0 sm:w-auto" />
+              <FlickSwitch options={WINDOW_OPTIONS} value={hours} onChange={onHoursChange} className="w-full sm:w-auto" />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
+              <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase mr-2">
                 Model
               </label>
-              <FlickSwitch options={modelOptions} value={model} onChange={onModelChange} className="w-full ml-2 sm:ml-0 sm:w-auto" />
+              <FlickSwitch options={modelOptions} value={model} onChange={onModelChange} className="w-full sm:w-auto" />
             </div>
           </div>
 
