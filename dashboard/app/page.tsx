@@ -48,7 +48,7 @@ export default function Home() {
   const [hours, setHours] = useState("24");
   const [model, setModel] = useState("glm-5");
   const [data, setData] = useState<OverviewResponse | null>(null); // Coding Plan
-  const [comparisonData, setComparisonData] = useState<OverviewResponse | null>(null); // Normal API
+  const [comparisonData, setComparisonData] = useState<OverviewResponse | null>(null); // Standard API
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,7 +124,7 @@ export default function Home() {
       label: "Avg TTFT",
       value: msToSecondsLabel(data?.metrics.avg_ttft_ms ?? null),
       secondary_value: msToSecondsLabel(comparisonData?.metrics.avg_ttft_ms ?? null),
-      secondary_label: "Normal API",
+      secondary_label: "Standard API",
       delta: "rolling last 24h",
       tone: "bg-[color:var(--accent-sky)]/55",
     },
@@ -132,7 +132,7 @@ export default function Home() {
       label: "Avg Output TPS",
       value: formatRate(data?.metrics.avg_output_tps),
       secondary_value: formatRate(comparisonData?.metrics.avg_output_tps),
-      secondary_label: "Normal API",
+      secondary_label: "Standard API",
       delta: "compl_tokens / (total_latency - ttft)",
       tone: "bg-[color:var(--accent-mint)]/60",
     },
@@ -140,7 +140,7 @@ export default function Home() {
       label: "Success Rate",
       value: formatPercent(data?.totals.success_rate_percent),
       secondary_value: formatPercent(comparisonData?.totals.success_rate_percent),
-      secondary_label: "Normal API",
+      secondary_label: "Standard API",
       delta: data?.totals.failures != null ? `${data.totals.failures} failed runs (24h)` : "-",
       tone: "bg-[color:var(--accent-gold)]/60",
     },
@@ -148,7 +148,7 @@ export default function Home() {
       label: "p95 TTFT",
       value: msToSecondsLabel(data?.metrics.p95_ttft_ms ?? null),
       secondary_value: msToSecondsLabel(comparisonData?.metrics.p95_ttft_ms ?? null),
-      secondary_label: "Normal API",
+      secondary_label: "Standard API",
       delta: data?.totals.requests != null ? `from ${data.totals.requests} requests (24h)` : "-",
       tone: "bg-[color:var(--accent-rose)]/58",
     },
@@ -156,7 +156,7 @@ export default function Home() {
       label: "Avg E2E TPS",
       value: formatRate(data?.metrics.avg_provider_tps_end_to_end),
       secondary_value: formatRate(comparisonData?.metrics.avg_provider_tps_end_to_end),
-      secondary_label: "Normal API",
+      secondary_label: "Standard API",
       delta: "compl_tokens / total_latency",
       tone: "bg-[color:var(--accent-sky)]/45",
     },

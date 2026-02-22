@@ -62,6 +62,8 @@ export function OverviewFilters({
 }: OverviewFiltersProps) {
   const availableModels = MODEL_OPTIONS.filter((option) => models.includes(option.value));
   const modelOptions = availableModels.length ? availableModels : MODEL_OPTIONS;
+  const selectedWindowLabel = WINDOW_OPTIONS.find((option) => option.value === hours)?.label ?? `${hours}h`;
+  const selectedModelLabel = modelOptions.find((option) => option.value === model)?.label ?? model;
 
   return (
     <section className="paper-panel paper-noise fade-up fade-up-delay-1 rounded-2xl p-4 md:p-5">
@@ -70,7 +72,40 @@ export function OverviewFilters({
           Showing Coding Plan API with Normal API comparison.
         </p>
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <details className="rounded-xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 md:hidden">
+          <summary className="cursor-pointer list-none px-3 py-2">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium tracking-[0.12em] text-[color:var(--card-foreground)] uppercase">
+                Filters
+              </span>
+              <span className="font-mono text-xs text-[color:var(--muted-foreground)]">
+                {selectedWindowLabel} | {selectedModelLabel}
+              </span>
+            </div>
+          </summary>
+          <div className="flex flex-col gap-3 p-3 pt-0">
+            <div className="space-y-2">
+              <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase mr-2">
+                Trend Window
+              </label>
+              <FlickSwitch options={WINDOW_OPTIONS} value={hours} onChange={onHoursChange} className="w-full sm:w-auto" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase mr-2">
+                Model
+              </label>
+              <FlickSwitch options={modelOptions} value={model} onChange={onModelChange} className="w-full sm:w-auto" />
+            </div>
+            <Link
+              href="/methodology"
+              className="inline-flex h-10 items-center justify-center rounded-lg border-2 border-[color:var(--card-foreground)]/22 bg-[color:var(--paper)]/65 px-3 text-sm leading-none font-semibold text-[color:var(--muted-foreground)] transition hover:bg-[color:var(--accent-sky)]/35 sm:h-8"
+            >
+              Methodology
+            </Link>
+          </div>
+        </details>
+
+        <div className="hidden md:flex md:items-center md:justify-between">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase mr-2">

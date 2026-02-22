@@ -7,7 +7,7 @@ Next.js dashboard for visualizing inference metrics written by `script/monitor_z
 - TTFT and first-SSE timing
 - Visible TPS vs provider-reported TPS
 - Success/failure rates and p95 TTFT
-- Side-by-side Coding Plan vs Normal API comparison in KPI cards and trend lines
+- Side-by-side Coding Plan vs Standard API comparison in KPI cards and trend lines
 - Avg cached prompt tokens per run (from `usage.prompt_tokens_details.cached_tokens`)
 - Schedule status (`:30` each hour, UTC)
 

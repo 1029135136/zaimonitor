@@ -20,7 +20,7 @@ export default function MethodologyPage() {
         <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">How Measurements Are Taken</h2>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-[color:var(--muted-foreground)]">
           <li>
-            Two runs are triggered in parallel: one against Coding Plan API and one against Normal API.
+            Two runs are triggered in parallel: one against Coding Plan API and one against Standard API.
           </li>
           <li>
             Each side uses a separate API key, but the same prompt shape, model selection, and runtime settings.

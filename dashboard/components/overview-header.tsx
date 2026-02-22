@@ -14,7 +14,7 @@ export function OverviewHeader({ scheduleText, latestDocumentTimestamp }: Overvi
             ZAI Monitor
           </p>
           <h1 className="font-display text-4xl leading-tight text-[color:var(--card-foreground)] md:text-5xl">
-            Inference speed, on paper.
+            Coding Plan speed, on paper.
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-[color:var(--muted-foreground)] md:text-base">
             Unscientific benchmarking of Z.AI inference speeds across different models, endpoints, and time ranges.
