@@ -63,8 +63,7 @@ export default function Home() {
   }, [hours, model, endpointFamily]);
 
   const scheduleText = data?.schedule?.cadence_label ?? "Updates every hour";
-  const nextRunText = `${formatUtc(data?.schedule?.next_run_utc ?? null)} UTC`;
-  const etaText = formatEta(data?.schedule?.next_run_utc ?? null);
+
 
   const kpis: KpiItem[] = [
     {
@@ -105,7 +104,7 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-5 py-6 md:px-10 md:py-10">
-      <OverviewHeader scheduleText={scheduleText} nextRunText={nextRunText} etaText={etaText} />
+      <OverviewHeader scheduleText={scheduleText}/>
 
       <OverviewFilters
         hours={hours}

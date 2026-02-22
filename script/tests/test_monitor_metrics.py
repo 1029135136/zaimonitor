@@ -198,7 +198,7 @@ class MonitorMetricTests(unittest.TestCase):
             cfg = monitor.load_config()
         self.assertEqual(cfg.zai_endpoint_family, monitor.ENDPOINT_FAMILY_OFFICIAL_API)
 
-    def test_build_document_includes_endpoint_family_and_provider(self):
+    def test_build_document_uses_lean_schema_and_captures_cached_tokens(self):
         cfg = monitor.Config(
             zai_api_key="test-key",
             zai_base_url="https://api.z.ai/api/paas/v4",
@@ -227,7 +227,12 @@ class MonitorMetricTests(unittest.TestCase):
             "content_chunk_count": 2,
             "response_text": "hello world",
             "response_chars": 11,
-            "usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8},
+            "usage": {
+                "prompt_tokens": 3,
+                "completion_tokens": 5,
+                "total_tokens": 8,
+                "cached_prompt_tokens": 2,
+            },
             "error": None,
             "error_payload": None,
             "started_at": datetime(2026, 2, 21, 0, 0, tzinfo=timezone.utc),
@@ -235,10 +240,30 @@ class MonitorMetricTests(unittest.TestCase):
             "request_id": "req-4",
         }
 
-        doc = monitor.build_document(cfg, "run-1", 1, "prompt text", result)
-        self.assertEqual(doc["provider"], "z.ai")
+        doc = monitor.build_document(cfg, result)
         self.assertEqual(doc["endpoint_family"], monitor.ENDPOINT_FAMILY_OFFICIAL_API)
         self.assertEqual(doc["endpoint_base"], "https://api.z.ai/api/paas/v4")
+        self.assertEqual(doc["tokens"]["completion_tokens"], 5)
+        self.assertEqual(doc["tokens"]["cached_prompt_tokens"], 2)
+        self.assertNotIn("run_id", doc)
+        self.assertNotIn("request_id", doc)
+        self.assertNotIn("provider", doc)
+        self.assertNotIn("response_preview", doc)
+
+    def test_extract_usage_reads_cached_tokens_from_prompt_token_details(self):
+        payload = {
+            "usage": {
+                "prompt_tokens": 1200,
+                "completion_tokens": 300,
+                "total_tokens": 1500,
+                "prompt_tokens_details": {"cached_tokens": 800},
+            }
+        }
+        usage = monitor._extract_usage(payload)
+        self.assertEqual(usage["prompt_tokens"], 1200)
+        self.assertEqual(usage["completion_tokens"], 300)
+        self.assertEqual(usage["total_tokens"], 1500)
+        self.assertEqual(usage["cached_prompt_tokens"], 800)
 
 
 if __name__ == "__main__":

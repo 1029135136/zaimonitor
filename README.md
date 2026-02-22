@@ -50,5 +50,6 @@ Example:
 - `output_tokens_per_second_post_ttft`: `(completion_tokens - 1) / (total_latency_ms - ttft_ms)`.
 - `first_answer_token_ms`: time to first answer `content` token.
 - `time_to_completed_answer_ms`: request start to completed answer stream.
+- `tokens.cached_prompt_tokens`: cache-hit prompt tokens from provider usage details.
 
 For full schema/details, use `script/MONGO.md`.

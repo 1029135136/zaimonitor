@@ -23,6 +23,7 @@ interface Metrics {
 
 interface Tokens {
   completion_tokens?: number;
+  cached_prompt_tokens?: number;
 }
 
 interface ErrorDoc {
@@ -208,6 +209,18 @@ function collectMetricGapValues(
   return values;
 }
 
+function collectTokenValues(docs: InferenceDoc[], key: keyof Tokens): number[] {
+  const values: number[] = [];
+  for (const doc of docs) {
+    const tokens = asDict(doc.tokens);
+    const raw = tokens[key];
+    if (raw === undefined || raw === null) continue;
+    const value = Number(raw);
+    if (!isNaN(value)) values.push(value);
+  }
+  return values;
+}
+
 export interface OverviewQueryParams {
   hours: number;
   model?: string;
@@ -238,6 +251,7 @@ export interface OverviewResult {
     avg_visible_tps: number | null;
     avg_provider_tps: number | null;
     avg_provider_tps_end_to_end: number | null;
+    avg_cached_prompt_tokens: number | null;
     p95_total_latency_ms: number | null;
   };
   trend: Array<{
@@ -340,6 +354,7 @@ export async function queryOverview(
       "metrics.generation_window_ms": 1,
       "metrics.total_latency_ms": 1,
       "tokens.completion_tokens": 1,
+      "tokens.cached_prompt_tokens": 1,
       "error.type": 1,
     };
 
@@ -396,6 +411,7 @@ export async function queryOverview(
       .filter((v): v is number => v !== null);
 
     const totalLatencyValues = collectMetricValues(successDocs, "total_latency_ms");
+    const cachedPromptTokenValues = collectTokenValues(docs, "cached_prompt_tokens");
 
     const buckets = new Map<string, BucketData>();
     for (const d of trendSuccessDocs) {
@@ -528,6 +544,7 @@ export async function queryOverview(
         avg_output_tps: avg(outputTpsValues.map((v) => Math.round(v * 1000) / 1000)),
         avg_provider_tps: avg(providerTpsValues.map((v) => Math.round(v * 1000) / 1000)),
         avg_provider_tps_end_to_end: avg(providerTpsE2eValues.map((v) => Math.round(v * 1000) / 1000)),
+        avg_cached_prompt_tokens: avg(cachedPromptTokenValues),
         p95_total_latency_ms: percentile(totalLatencyValues, 0.95)
           ? Math.round(percentile(totalLatencyValues, 0.95)! * 100) / 100
           : null,

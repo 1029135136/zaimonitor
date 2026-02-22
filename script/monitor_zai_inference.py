@@ -24,7 +24,6 @@ Optional env vars:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -228,14 +227,19 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
 def estimate_visible_tokens(text: str) -> int:
     if not text:
         return 0
     return len(re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE))
+
+
+def _as_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _extract_usage(payload: Dict[str, Any]) -> Dict[str, Optional[int]]:
@@ -245,12 +249,19 @@ def _extract_usage(payload: Dict[str, Any]) -> Dict[str, Optional[int]]:
             "prompt_tokens": None,
             "completion_tokens": None,
             "total_tokens": None,
+            "cached_prompt_tokens": None,
         }
 
+    prompt_tokens_details = usage.get("prompt_tokens_details")
+    cached_tokens = None
+    if isinstance(prompt_tokens_details, dict):
+        cached_tokens = _as_optional_int(prompt_tokens_details.get("cached_tokens"))
+
     return {
-        "prompt_tokens": usage.get("prompt_tokens"),
-        "completion_tokens": usage.get("completion_tokens"),
-        "total_tokens": usage.get("total_tokens"),
+        "prompt_tokens": _as_optional_int(usage.get("prompt_tokens")),
+        "completion_tokens": _as_optional_int(usage.get("completion_tokens")),
+        "total_tokens": _as_optional_int(usage.get("total_tokens")),
+        "cached_prompt_tokens": cached_tokens,
     }
 
 
@@ -302,6 +313,7 @@ def stream_chat_completion(
             "prompt_tokens": None,
             "completion_tokens": None,
             "total_tokens": None,
+            "cached_prompt_tokens": None,
         }
         status_code: Optional[int] = None
         error_payload: Optional[Dict[str, Any]] = None
@@ -510,6 +522,7 @@ def stream_chat_completion(
             "prompt_tokens": None,
             "completion_tokens": None,
             "total_tokens": None,
+            "cached_prompt_tokens": None,
         },
         "request_id": request_id,
     }
@@ -546,46 +559,28 @@ def ensure_collection_indexes(collection: Collection) -> None:
 
 def build_document(
     cfg: Config,
-    run_id: str,
-    prompt_index: int,
-    prompt: str,
     result: Dict[str, Any],
 ) -> Dict[str, Any]:
     usage = result.get("usage") or {}
     completion_tokens = usage.get("completion_tokens")
-    prompt_tokens = usage.get("prompt_tokens")
+    cached_prompt_tokens = usage.get("cached_prompt_tokens")
     response_text = result.get("response_text") or ""
     visible_output_tokens_estimate = estimate_visible_tokens(response_text)
-    token_visibility_ratio = None
-    if completion_tokens and completion_tokens > 0:
-        token_visibility_ratio = visible_output_tokens_estimate / completion_tokens
 
-    chars_per_second = None
     visible_tokens_per_second = None
     generation_window_ms = result.get("generation_window_ms")
     response_chars = result.get("response_chars")
     if generation_window_ms and generation_window_ms > 0 and response_chars is not None:
-        chars_per_second = response_chars / (generation_window_ms / 1000)
         visible_tokens_per_second = visible_output_tokens_estimate / (generation_window_ms / 1000)
 
     return {
-        "run_id": run_id,
-        "request_id": result.get("request_id"),
         "timestamp": now_utc(),
         "metrics_version": METRICS_VERSION,
-        "provider": cfg.zai_provider,
         "endpoint_family": cfg.zai_endpoint_family,
         "endpoint_base": cfg.zai_base_url,
-        "endpoint_path": "/chat/completions",
         "model": cfg.zai_model,
-        "prompt_index": prompt_index,
-        "prompt_hash": sha256_text(prompt),
-        "prompt_length": len(prompt),
         "ok": result.get("ok", False),
-        "http_status": result.get("http_status"),
-        "attempt": result.get("attempt"),
         "metrics": {
-            "header_latency_ms": result.get("header_latency_ms"),
             "first_sse_event_ms": result.get("first_sse_event_ms"),
             "first_reasoning_token_ms": result.get("first_reasoning_token_ms"),
             "first_answer_token_ms": result.get("first_answer_token_ms"),
@@ -598,25 +593,14 @@ def build_document(
             "provider_output_tokens_per_second_end_to_end": result.get("output_tokens_per_second_end_to_end"),
             "output_tokens_per_second_post_ttft": result.get("output_tokens_per_second_post_ttft"),
             "visible_output_tokens_per_second": visible_tokens_per_second,
-            "output_chars_per_second": chars_per_second,
-            "sse_event_count": result.get("sse_event_count"),
-            "reasoning_chunk_count": result.get("reasoning_chunk_count"),
-            "content_chunk_count": result.get("content_chunk_count"),
-            "token_visibility_ratio": token_visibility_ratio,
         },
         "tokens": {
-            "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
-            "total_tokens": usage.get("total_tokens"),
-            "visible_output_tokens_estimate": visible_output_tokens_estimate,
+            "cached_prompt_tokens": cached_prompt_tokens,
         },
         "error": {
             "type": result.get("error"),
-            "payload": result.get("error_payload"),
         },
-        "response_preview": (result.get("response_text") or "")[:500],
-        "started_at": result.get("started_at"),
-        "finished_at": result.get("finished_at"),
     }
 
 
@@ -769,7 +753,7 @@ def main() -> int:
         )
 
         result = stream_chat_completion(cfg=cfg, prompt=prompt, request_id=request_id)
-        document = build_document(cfg, run_id, prompt_index, prompt, result)
+        document = build_document(cfg, result)
         documents.append(document)
 
         print_progress(
@@ -779,19 +763,20 @@ def main() -> int:
                 "request_id": request_id,
                 "endpoint_family": cfg.zai_endpoint_family,
                 "prompt_index": prompt_index,
-                "ok": document.get("ok"),
-                "http_status": document.get("http_status"),
-                "header_latency_ms": document.get("metrics", {}).get("header_latency_ms"),
-                "first_sse_event_ms": document.get("metrics", {}).get("first_sse_event_ms"),
-                "first_reasoning_token_ms": document.get("metrics", {}).get("first_reasoning_token_ms"),
-                "first_answer_token_ms": document.get("metrics", {}).get("first_answer_token_ms"),
-                "ttft_ms": document.get("metrics", {}).get("ttft_ms"),
-                "thinking_window_ms": document.get("metrics", {}).get("thinking_window_ms"),
-                "time_to_completed_answer_ms": document.get("metrics", {}).get("time_to_completed_answer_ms"),
-                "total_latency_ms": document.get("metrics", {}).get("total_latency_ms"),
-                "provider_output_tokens_per_second": document.get("metrics", {}).get("provider_output_tokens_per_second"),
-                "output_tokens_per_second_post_ttft": document.get("metrics", {}).get("output_tokens_per_second_post_ttft"),
+                "ok": result.get("ok"),
+                "http_status": result.get("http_status"),
+                "header_latency_ms": result.get("header_latency_ms"),
+                "first_sse_event_ms": result.get("first_sse_event_ms"),
+                "first_reasoning_token_ms": result.get("first_reasoning_token_ms"),
+                "first_answer_token_ms": result.get("first_answer_token_ms"),
+                "ttft_ms": result.get("ttft_ms"),
+                "thinking_window_ms": result.get("thinking_window_ms"),
+                "time_to_completed_answer_ms": result.get("time_to_completed_answer_ms"),
+                "total_latency_ms": result.get("total_latency_ms"),
+                "provider_output_tokens_per_second": result.get("output_tokens_per_second"),
+                "output_tokens_per_second_post_ttft": result.get("output_tokens_per_second_post_ttft"),
                 "visible_output_tokens_per_second": document.get("metrics", {}).get("visible_output_tokens_per_second"),
+                "cached_prompt_tokens": document.get("tokens", {}).get("cached_prompt_tokens"),
             },
             enabled=cfg.log_progress,
         )

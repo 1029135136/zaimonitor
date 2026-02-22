@@ -8,6 +8,8 @@ type OverviewAdditionalMetricsProps = {
 export function OverviewAdditionalMetrics({ data }: OverviewAdditionalMetricsProps) {
   const metrics = data?.metrics;
   const avgProviderTps = metrics?.avg_provider_tps != null ? metrics.avg_provider_tps.toFixed(2) : "-";
+  const avgCachedPromptTokens =
+    metrics?.avg_cached_prompt_tokens != null ? metrics.avg_cached_prompt_tokens.toFixed(2) : "-";
 
   return (
     <details className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
@@ -32,6 +34,7 @@ export function OverviewAdditionalMetrics({ data }: OverviewAdditionalMetricsPro
         <MetricItem label="Avg First Answer Token" value={msToSecondsLabel(metrics?.avg_first_answer_token_ms ?? null)} />
         <MetricItem label="Avg Thinking Window" value={msToSecondsLabel(metrics?.avg_thinking_window_ms ?? null)} />
         <MetricItem label="Avg Provider TPS" value={avgProviderTps} />
+        <MetricItem label="Avg Cached Prompt Tokens" value={avgCachedPromptTokens} />
       </div>
     </details>
   );

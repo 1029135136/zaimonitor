@@ -7,6 +7,7 @@ Next.js dashboard for visualizing inference metrics written by `script/monitor_z
 - TTFT and first-SSE timing
 - Visible TPS vs provider-reported TPS
 - Success/failure rates and p95 total latency
+- Avg cached prompt tokens per run (from `usage.prompt_tokens_details.cached_tokens`)
 - Schedule status (`:30` each hour, UTC)
 
 ## Data flow
