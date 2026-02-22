@@ -10,8 +10,11 @@ import { OverviewTrend } from "@/components/overview-trend";
 import { msToSecondsLabel } from "@/lib/overview-format";
 import type { KpiItem, OverviewResponse } from "@/lib/overview-types";
 
-const CODING_PLAN_ENDPOINT_FAMILY = "coding_plan";
-const OFFICIAL_API_ENDPOINT_FAMILY = "official_api";
+type OverviewPairResponse = {
+  coding_plan: OverviewResponse;
+  official_api: OverviewResponse;
+  generated_at: string | null;
+};
 
 function formatPercent(value: number | null | undefined): string {
   return value != null ? `${value.toFixed(1)}%` : "-";
@@ -61,31 +64,20 @@ export default function Home() {
         setLoading(true);
         setError(null);
 
-        const queryFor = (endpointFamily: string) => {
-          const params = new URLSearchParams({ hours });
-          params.set("endpoint_family", endpointFamily);
-          params.set("model", model);
-          return params.toString();
-        };
+        const params = new URLSearchParams({ hours });
+        params.set("endpoint_family", "both");
+        params.set("model", model);
 
-        const [codingResponse, officialApiResponse] = await Promise.all([
-          fetch(`/api/overview?${queryFor(CODING_PLAN_ENDPOINT_FAMILY)}`, {
-            cache: "no-store",
-          }),
-          fetch(`/api/overview?${queryFor(OFFICIAL_API_ENDPOINT_FAMILY)}`, {
-            cache: "no-store",
-          }),
-        ]);
-
-        if (!codingResponse.ok || !officialApiResponse.ok) {
-          const status = !codingResponse.ok ? codingResponse.status : officialApiResponse.status;
-          throw new Error(`Request failed (${status})`);
+        const response = await fetch(`/api/overview?${params.toString()}`, {
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          throw new Error(`Request failed (${response.status})`);
         }
 
-        const [codingPayload, officialApiPayload] = (await Promise.all([
-          codingResponse.json(),
-          officialApiResponse.json(),
-        ])) as [OverviewResponse, OverviewResponse];
+        const pairPayload = (await response.json()) as OverviewPairResponse;
+        const codingPayload = pairPayload.coding_plan;
+        const officialApiPayload = pairPayload.official_api;
 
         if (!cancelled) {
           const allModels = Array.from(new Set([...codingPayload.models, ...officialApiPayload.models]));

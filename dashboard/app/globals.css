@@ -163,6 +163,10 @@
   .fade-up-delay-3 {
     animation-delay: 270ms;
   }
+
+  .fade-up-delay-4 {
+    animation-delay: 360ms;
+  }
 }
 
 @keyframes fade-up {

@@ -76,8 +76,8 @@ export function OverviewFilters({
               <span className="text-xs font-medium tracking-[0.12em] text-[color:var(--card-foreground)] uppercase">
                 Filters
               </span>
-              <span className="font-mono text-sm font-bold">
-                {selectedModelLabel}
+              <span className="font-mono text-xs text-[color:var(--muted-foreground)]">
+                {selectedWindowLabel} | {selectedModelLabel}
               </span>
             </div>
           </summary>

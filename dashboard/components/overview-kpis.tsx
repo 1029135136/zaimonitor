@@ -11,15 +11,8 @@ export function OverviewKpis({ items, loading }: OverviewKpisProps) {
       {items.map((kpi, index) => (
         <article
           key={kpi.label}
-          className={`paper-panel paper-noise fade-up rounded-2xl p-5 ${
-            index === 1
-              ? "fade-up-delay-1"
-              : index === 2
-                ? "fade-up-delay-2"
-                : index === 3
-                  ? "fade-up-delay-3"
-                  : ""
-          }`}
+          className="paper-panel paper-noise fade-up rounded-2xl p-5"
+          style={{ animationDelay: `${index * 90}ms` }}
         >
           <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${kpi.tone}`}>
             {kpi.label}
