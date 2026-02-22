@@ -51,7 +51,27 @@ function formatUtcDate(raw: string | null): string {
 
 export function OverviewTrend({ hours, trend, windowStart, windowEnd }: OverviewTrendProps) {
   const [metric, setMetric] = useState<TrendMetricKey>("output_tps");
-  const activeOption = METRIC_OPTIONS.find((option) => option.key === metric) ?? METRIC_OPTIONS[0];
+  const metricHasData = useMemo(() => {
+    const hasDataFor = (key: TrendMetricKey) =>
+      trend.some((point) => typeof point[key] === "number" && Number.isFinite(point[key]));
+    return {
+      output_tps: hasDataFor("output_tps"),
+      visible_tps: hasDataFor("visible_tps"),
+      provider_tps: hasDataFor("provider_tps"),
+    };
+  }, [trend]);
+
+  const effectiveMetric: TrendMetricKey = metricHasData[metric]
+    ? metric
+    : metricHasData.output_tps
+      ? "output_tps"
+      : metricHasData.visible_tps
+        ? "visible_tps"
+        : metricHasData.provider_tps
+          ? "provider_tps"
+          : metric;
+
+  const activeOption = METRIC_OPTIONS.find((option) => option.key === effectiveMetric) ?? METRIC_OPTIONS[0];
 
   const chart = useMemo(() => {
     const start = parseIso(windowStart);
@@ -84,7 +104,7 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
       const ts = parseIso(point.timestamp);
       if (!ts) return null;
       const xRatio = (ts.getTime() - domainStartMs) / domainSpanMs;
-      const value = point[metric];
+      const value = point[effectiveMetric];
       const numericValue = typeof value === "number" && Number.isFinite(value) ? value : null;
       return {
         x: xStart + xRatio * plotWidth,
@@ -163,7 +183,7 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
       xTicks,
       hasData: true,
     };
-  }, [metric, trend, windowStart, windowEnd]);
+  }, [effectiveMetric, trend, windowStart, windowEnd]);
 
   return (
     <article className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
@@ -179,7 +199,7 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
 
       <div className="mb-3 flex flex-wrap gap-2">
         {METRIC_OPTIONS.map((option) => {
-          const selected = option.key === metric;
+          const selected = option.key === effectiveMetric;
           return (
             <button
               key={option.key}

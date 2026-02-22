@@ -7,11 +7,7 @@ type OverviewAdditionalMetricsProps = {
 
 export function OverviewAdditionalMetrics({ data }: OverviewAdditionalMetricsProps) {
   const metrics = data?.metrics;
-  const avgOutputTps = metrics?.avg_output_tps != null ? metrics.avg_output_tps.toFixed(2) : "-";
-  const avgVisibleTps = metrics?.avg_visible_tps != null ? metrics.avg_visible_tps.toFixed(2) : "-";
   const avgProviderTps = metrics?.avg_provider_tps != null ? metrics.avg_provider_tps.toFixed(2) : "-";
-  const avgProviderTpsE2E =
-    metrics?.avg_provider_tps_end_to_end != null ? metrics.avg_provider_tps_end_to_end.toFixed(2) : "-";
 
   return (
     <details className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
@@ -35,12 +31,7 @@ export function OverviewAdditionalMetrics({ data }: OverviewAdditionalMetricsPro
         <MetricItem label="Avg First Reasoning Token" value={msToSecondsLabel(metrics?.avg_first_reasoning_token_ms ?? null)} />
         <MetricItem label="Avg First Answer Token" value={msToSecondsLabel(metrics?.avg_first_answer_token_ms ?? null)} />
         <MetricItem label="Avg Thinking Window" value={msToSecondsLabel(metrics?.avg_thinking_window_ms ?? null)} />
-        <MetricItem label="Avg First SSE Event" value={msToSecondsLabel(metrics?.avg_first_sse_event_ms ?? null)} />
-        <MetricItem label="Avg SSE to Visible Gap" value={msToSecondsLabel(metrics?.avg_sse_to_visible_gap_ms ?? null)} />
-        <MetricItem label="Avg Output TPS (post-TTFT)" value={avgOutputTps} />
-        <MetricItem label="Avg Visible TPS" value={avgVisibleTps} />
         <MetricItem label="Avg Provider TPS" value={avgProviderTps} />
-        <MetricItem label="Avg Provider TPS End-to-End" value={avgProviderTpsE2E} />
       </div>
     </details>
   );

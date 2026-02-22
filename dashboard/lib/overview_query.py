@@ -414,7 +414,7 @@ def main() -> int:
     latest_ts = docs[-1].get("timestamp") if docs else (trend_docs[-1].get("timestamp") if trend_docs else None)
 
     next_run = _next_thirty_mark(now_utc)
-    cadence_label = ":30 each hour (UTC)"
+    cadence_label = "Updates every hour""
 
     payload = {
         "window": {

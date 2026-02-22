@@ -32,11 +32,16 @@ type FlickSwitchProps = {
   options: readonly { value: string; label: string }[];
   value: string;
   onChange: (value: string) => void;
+  className?: string;
 };
 
-function FlickSwitch({ options, value, onChange }: FlickSwitchProps) {
+function FlickSwitch({ options, value, onChange, className }: FlickSwitchProps) {
   return (
-    <div className="inline-flex items-center rounded-xl border-2 border-[color:var(--card-foreground)]/22 bg-[color:var(--paper)]/65 p-1 shadow-[0_10px_16px_-14px_rgba(20,25,28,0.55)]">
+    <div
+      className={`inline-flex items-center rounded-xl border-2 border-[color:var(--card-foreground)]/22 bg-[color:var(--paper)]/65 p-1 shadow-[0_10px_16px_-14px_rgba(20,25,28,0.55)] ${
+        className ?? ""
+      }`}
+    >
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -44,9 +49,9 @@ function FlickSwitch({ options, value, onChange }: FlickSwitchProps) {
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
-            className={`inline-flex h-8 items-center justify-center rounded-lg px-3 text-sm leading-none font-semibold transition ${
+            className={`inline-flex h-10 flex-1 items-center justify-center rounded-lg px-3 text-sm leading-none font-semibold transition sm:h-8 ${
               selected
-                ? "bg-[color:var(--accent-gold)] text-[color:var(--card-foreground)] shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_8px_16px_-14px_rgba(20,25,28,0.65)]"
+                ? "bg-[color:var(--accent-gold)] text-[color:var(--card-foreground)]"
                 : "text-[color:var(--muted-foreground)] hover:bg-[color:var(--accent-sky)]/35"
             }`}
           >
@@ -101,20 +106,23 @@ export function OverviewFilters({
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-4">
-            <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
-              Trend Window
-            </label>
-            <FlickSwitch options={WINDOW_OPTIONS} value={hours} onChange={onHoursChange} />
-
-            <label className="ml-2 text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
-              Model
-            </label>
-            <FlickSwitch options={modelOptions} value={model} onChange={onModelChange} />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
+                Trend Window
+              </label>
+              <FlickSwitch options={WINDOW_OPTIONS} value={hours} onChange={onHoursChange} className="w-full ml-2 sm:ml-0 sm:w-auto" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
+                Model
+              </label>
+              <FlickSwitch options={modelOptions} value={model} onChange={onModelChange} className="w-full ml-2 sm:ml-0 sm:w-auto" />
+            </div>
           </div>
 
           <p className="font-mono text-xs text-[color:var(--muted-foreground)]">
-            latest doc: {formatUtc(latestDocumentTimestamp)} UTC
+            latest: {formatUtc(latestDocumentTimestamp)} UTC
           </p>
         </div>
       </div>

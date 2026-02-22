@@ -16,7 +16,7 @@ export function OverviewHeader({ scheduleText, nextRunText, etaText }: OverviewH
             Inference speed, on paper.
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-[color:var(--muted-foreground)] md:text-base">
-            Unscientific benchmarking of Z.AI inference speeds across different models, endpoints, and time ranges. 
+            Unscientific benchmarking of Z.AI inference speeds across different models, endpoints, and time ranges.
           </p>
         </div>
         <div className="space-y-2 self-start md:self-auto">
@@ -25,7 +25,7 @@ export function OverviewHeader({ scheduleText, nextRunText, etaText }: OverviewH
             {scheduleText}
           </div>
           <p className="text-right font-mono text-xs text-[color:var(--muted-foreground)]">
-            next run {nextRunText} ({etaText})
+            next run approx. {nextRunText} ({etaText})
           </p>
         </div>
       </div>

@@ -39,6 +39,9 @@ export default function Home() {
 
         const payload = (await response.json()) as OverviewResponse;
         if (!cancelled) {
+          if (payload.models.length && !payload.models.includes(model)) {
+            setModel(payload.models[0]);
+          }
           setData(payload);
         }
       } catch (err) {
@@ -59,7 +62,7 @@ export default function Home() {
     };
   }, [hours, model, endpointFamily]);
 
-  const scheduleText = data?.schedule?.cadence_label ?? ":30 each hour (UTC)";
+  const scheduleText = data?.schedule?.cadence_label ?? "Updates every hour";
   const nextRunText = `${formatUtc(data?.schedule?.next_run_utc ?? null)} UTC`;
   const etaText = formatEta(data?.schedule?.next_run_utc ?? null);
 
@@ -73,7 +76,7 @@ export default function Home() {
     {
       label: "Avg Output TPS",
       value: data?.metrics.avg_output_tps != null ? data.metrics.avg_output_tps.toFixed(2) : "-",
-      delta: "(completion_tokens - 1) / (total_latency - ttft)",
+      delta: "compl_tokens / (total_latency - ttft)",
       tone: "bg-[color:var(--accent-mint)]/60",
     },
     {
@@ -95,7 +98,7 @@ export default function Home() {
         data?.metrics.avg_provider_tps_end_to_end != null
           ? data.metrics.avg_provider_tps_end_to_end.toFixed(2)
           : "-",
-      delta: "completion_tokens / total_latency",
+      delta: "compl_tokens / total_latency",
       tone: "bg-[color:var(--accent-sky)]/45",
     },
   ];
