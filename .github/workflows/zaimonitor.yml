@@ -1,14 +1,14 @@
 name: ZAI Inference Monitor
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - script/**
+#   push:
+#     branches:
+#       - main
+#     paths:
+#       - script/**
 
   schedule:
-    - cron: "0 */4 * * *"   # at :00 every 4th hour (UTC)
+    - cron: "10 * * * *"   # at :10 every hour (UTC)
 
   workflow_dispatch:
 

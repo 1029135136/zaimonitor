@@ -22,6 +22,45 @@ function formatNumber(value: number | null): string {
   return value.toFixed(2);
 }
 
+function formatRange(min: number | null, max: number | null): string {
+  if (min == null || max == null) return "-";
+  return `${formatNumber(min)} - ${formatNumber(max)}`;
+}
+
+type SeriesStats = {
+  min: number | null;
+  max: number | null;
+  avg: number | null;
+  latest: number | null;
+  changePercent: number | null;
+};
+
+function computeSeriesStats(values: number[]): SeriesStats {
+  if (!values.length) {
+    return {
+      min: null,
+      max: null,
+      avg: null,
+      latest: null,
+      changePercent: null,
+    };
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const avg = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const latest = values[values.length - 1];
+  const first = values[0];
+
+  return {
+    min,
+    max,
+    avg,
+    latest,
+    changePercent: first > 0 ? ((latest - first) / first) * 100 : null,
+  };
+}
+
 function parseIso(raw: string | null): Date | null {
   if (!raw) return null;
   const parsed = new Date(raw);
@@ -84,9 +123,9 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
       return {
         min: null,
         max: null,
-        avg: null,
-        latest: null,
-        changePercent: null,
+        axisAvg: null,
+        primaryStats: computeSeriesStats([]),
+        comparisonStats: computeSeriesStats([]),
         primaryPathSegments: [] as string[],
         comparisonPathSegments: [] as string[],
         xTicks: [] as { x: number; label: string }[],
@@ -153,9 +192,9 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
         yBottom,
         min: null,
         max: null,
-        avg: null,
-        latest: null,
-        changePercent: null,
+        axisAvg: null,
+        primaryStats: computeSeriesStats([]),
+        comparisonStats: computeSeriesStats([]),
         primaryPathSegments: [] as string[],
         comparisonPathSegments: [] as string[],
         xTicks,
@@ -165,13 +204,8 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
 
     const min = Math.min(...nonNullValues);
     const max = Math.max(...nonNullValues);
+    const axisAvg = nonNullValues.reduce((sum, value) => sum + value, 0) / nonNullValues.length;
     const yRange = Math.max(max - min, 0.001);
-
-    const statsValues = primaryValues.length ? primaryValues : comparisonValues;
-    const avg = statsValues.reduce((sum, value) => sum + value, 0) / statsValues.length;
-    const latest = statsValues[statsValues.length - 1];
-    const first = statsValues[0];
-    const changePercent = first > 0 ? ((latest - first) / first) * 100 : null;
 
     const toPathSegments = (points: Array<{ x: number; value: number | null } | null>) => {
       const pathSegments: string[] = [];
@@ -198,9 +232,9 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
       yBottom,
       min,
       max,
-      avg,
-      latest,
-      changePercent,
+      axisAvg,
+      primaryStats: computeSeriesStats(primaryValues),
+      comparisonStats: computeSeriesStats(comparisonValues),
       primaryPathSegments: toPathSegments(primaryPoints),
       comparisonPathSegments: toPathSegments(comparisonPoints),
       xTicks,
@@ -247,7 +281,7 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
         </span>
         <span className="inline-flex items-center gap-2 text-[color:var(--chart-4)]">
           <span className="h-2 w-4 rounded-full bg-[color:var(--chart-4)]" aria-hidden />
-          Normal API
+          Standard API
         </span>
       </div>
 
@@ -293,7 +327,7 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
                 textAnchor="end"
                 className="fill-[color:var(--muted-foreground)] font-mono text-[10px]"
               >
-                {formatNumber(chart.avg)}
+                {formatNumber(chart.axisAvg)}
               </text>
               <text x="648" y={chart.yBottom! + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
                 {formatNumber(chart.min)}
@@ -313,12 +347,33 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-4">
-        <MetricTile label="Latest" value={formatNumber(chart.latest)} />
-        <MetricTile label="Average" value={formatNumber(chart.avg)} />
-        <MetricTile label="Range" value={`${formatNumber(chart.min)} - ${formatNumber(chart.max)}`} />
+        <MetricTile
+          label="Latest"
+          value={formatNumber(chart.primaryStats.latest)}
+          secondaryValue={formatNumber(chart.comparisonStats.latest)}
+        />
+        <MetricTile
+          label="Average"
+          value={formatNumber(chart.primaryStats.avg)}
+          secondaryValue={formatNumber(chart.comparisonStats.avg)}
+        />
+        <MetricTile
+          label="Range"
+          value={formatRange(chart.primaryStats.min, chart.primaryStats.max)}
+          secondaryValue={formatRange(chart.comparisonStats.min, chart.comparisonStats.max)}
+        />
         <MetricTile
           label="Drift"
-          value={chart.changePercent == null ? "-" : `${chart.changePercent >= 0 ? "+" : ""}${chart.changePercent.toFixed(1)}%`}
+          value={
+            chart.primaryStats.changePercent == null
+              ? "-"
+              : `${chart.primaryStats.changePercent >= 0 ? "+" : ""}${chart.primaryStats.changePercent.toFixed(1)}%`
+          }
+          secondaryValue={
+            chart.comparisonStats.changePercent == null
+              ? "-"
+              : `${chart.comparisonStats.changePercent >= 0 ? "+" : ""}${chart.comparisonStats.changePercent.toFixed(1)}%`
+          }
         />
       </div>
     </article>
@@ -328,13 +383,17 @@ export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, wind
 type MetricTileProps = {
   label: string;
   value: string;
+  secondaryValue?: string;
 };
 
-function MetricTile({ label, value }: MetricTileProps) {
+function MetricTile({ label, value, secondaryValue }: MetricTileProps) {
   return (
     <article className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 p-3">
       <p className="font-mono text-xs tracking-[0.1em] text-[color:var(--muted-foreground)] uppercase">{label}</p>
       <p className="mt-1 text-base text-[color:var(--card-foreground)]">{value}</p>
+      {secondaryValue ? (
+        <p className="mt-1 font-mono text-xs text-[color:var(--chart-4)]">{secondaryValue}</p>
+      ) : null}
     </article>
   );
 }

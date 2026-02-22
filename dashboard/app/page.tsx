@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { OverviewFilters } from "@/components/overview-filters";
 import { OverviewHeader } from "@/components/overview-header";
@@ -189,6 +190,15 @@ export default function Home() {
       />
     
       <OverviewAdditionalMetrics data={data} comparisonData={comparisonData} />
+
+      <div className="fade-up fade-up-delay-3">
+        <Link
+          href="/methodology"
+          className="inline-flex h-10 items-center justify-center rounded-lg border-2 border-[color:var(--card-foreground)]/22 bg-[color:var(--paper)]/65 px-3 text-sm leading-none font-semibold text-[color:var(--muted-foreground)] transition hover:bg-[color:var(--accent-sky)]/35 sm:h-8"
+        >
+          Methodology
+        </Link>
+      </div>
     </div>
   );
 }

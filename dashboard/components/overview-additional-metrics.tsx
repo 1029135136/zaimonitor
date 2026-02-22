@@ -78,7 +78,7 @@ function MetricItem({ label, value, secondaryValue }: MetricItemProps) {
       <p className="font-mono text-xs tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">{label}</p>
       <p className="mt-1 text-lg text-[color:var(--card-foreground)]">{value}</p>
       {secondaryValue ? (
-        <p className="mt-1 font-mono text-xs text-[color:var(--chart-4)]">Standard API: {secondaryValue}</p>
+        <p className="mt-1 font-mono text-xs text-[color:var(--chart-4)]">{secondaryValue}</p>
       ) : null}
     </article>
   );
