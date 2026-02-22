@@ -3,11 +3,19 @@ import { msToSecondsLabel } from "@/lib/overview-format";
 
 type OverviewNotesProps = {
   model: string;
+  endpointFamily: string;
   data: OverviewResponse | null;
 };
 
-export function OverviewNotes({ model, data }: OverviewNotesProps) {
+function endpointFamilyLabel(value: string): string {
+  if (value === "coding_plan") return "Coding Plan API";
+  if (value === "official_api") return "Normal API";
+  return value;
+}
+
+export function OverviewNotes({ model, endpointFamily, data }: OverviewNotesProps) {
   const selectedModel = model === "all" ? "all" : model;
+  const selectedEndpointFamily = endpointFamilyLabel(data?.selected_endpoint_family ?? endpointFamily);
   const topError = data?.errors.length ? `${data.errors[0].type}: ${data.errors[0].count}` : "No errors in selected window.";
   const thinkingVsAnswer =
     data?.metrics.avg_first_reasoning_token_ms != null && data?.metrics.avg_first_answer_token_ms != null
@@ -20,6 +28,10 @@ export function OverviewNotes({ model, data }: OverviewNotesProps) {
     <article className="paper-panel paper-noise fade-up fade-up-delay-1 rounded-3xl p-5 md:p-7">
       <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Run Notes</h2>
       <ul className="mt-4 space-y-3">
+        <li className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--accent-sky)]/45 p-3">
+          <p className="font-mono text-xs tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">Endpoint</p>
+          <p className="mt-1 text-sm text-[color:var(--card-foreground)]">{selectedEndpointFamily}</p>
+        </li>
         <li className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--accent-mint)]/45 p-3">
           <p className="font-mono text-xs tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">Model</p>
           <p className="mt-1 text-sm text-[color:var(--card-foreground)]">{selectedModel}</p>

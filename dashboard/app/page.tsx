@@ -14,6 +14,7 @@ import type { KpiItem, OverviewResponse } from "@/lib/overview-types";
 export default function Home() {
   const [hours, setHours] = useState("24");
   const [model, setModel] = useState("all");
+  const [endpointFamily, setEndpointFamily] = useState("coding_plan");
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export default function Home() {
         setError(null);
 
         const params = new URLSearchParams({ hours });
+        params.set("endpoint_family", endpointFamily);
         if (model !== "all") {
           params.set("model", model);
         }
@@ -65,7 +67,7 @@ export default function Home() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [hours, model]);
+  }, [hours, model, endpointFamily]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -129,10 +131,13 @@ export default function Home() {
       <OverviewFilters
         hours={hours}
         model={model}
+        endpointFamily={endpointFamily}
         models={data?.models ?? []}
+        endpointFamilies={data?.endpoint_families ?? ["coding_plan", "official_api"]}
         latestDocumentTimestamp={data?.latest_document_timestamp ?? null}
         onHoursChange={setHours}
         onModelChange={setModel}
+        onEndpointFamilyChange={setEndpointFamily}
       />
 
       {error ? (
@@ -143,7 +148,7 @@ export default function Home() {
 
       <section className="grid gap-4 lg:grid-cols-[1.8fr_1fr]">
         <OverviewTrend hours={hours} path={trendPath} />
-        <OverviewNotes model={model} data={data} />
+        <OverviewNotes model={model} endpointFamily={endpointFamily} data={data} />
       </section>
 
       <OverviewAdditionalMetrics data={data} />

@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { NextResponse } from "next/server";
 
 const execFileAsync = promisify(execFile);
+const ENDPOINT_FAMILIES = new Set(["coding_plan", "official_api"]);
 
 export const runtime = "nodejs";
 
@@ -20,18 +21,28 @@ function parseModel(raw: string | null): string {
   return raw.replace(/[^\w\-./]/g, "").slice(0, 120);
 }
 
+function parseEndpointFamily(raw: string | null): string {
+  if (!raw) return "coding_plan";
+  const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
+  if (ENDPOINT_FAMILIES.has(normalized)) {
+    return normalized;
+  }
+  return "coding_plan";
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const hours = parseHours(url.searchParams.get("hours"));
     const model = parseModel(url.searchParams.get("model"));
+    const endpointFamily = parseEndpointFamily(url.searchParams.get("endpoint_family"));
 
     const root = path.resolve(process.cwd(), "..");
     const scriptPath = path.join(process.cwd(), "lib", "overview_query.py");
     const venvPython = path.join(root, "script", ".venv", "bin", "python");
     const pythonBin = process.env.DASHBOARD_PYTHON_BIN || (fs.existsSync(venvPython) ? venvPython : "python3");
 
-    const args = [scriptPath, "--hours", hours];
+    const args = [scriptPath, "--hours", hours, "--endpoint-family", endpointFamily];
     if (model) {
       args.push("--model", model);
     }

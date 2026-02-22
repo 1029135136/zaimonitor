@@ -12,6 +12,7 @@
   "timestamp": "ISO 8601 datetime",
   "metrics_version": 4,
   "provider": "z.ai",
+  "endpoint_family": "coding_plan",
   "endpoint_base": "https://api.z.ai/api/coding/paas/v4",
   "endpoint_path": "/chat/completions",
   "model": "glm-5",
@@ -63,6 +64,8 @@
 | `run_id` | string | Identifier for each script execution; groups 5 prompts together |
 | `request_id` | string | Unique ID per individual API request |
 | `metrics_version` | int | Metric semantics version (`4` = TTFT is first any token + explicit answer-completion metrics) |
+| `endpoint_family` | string | Endpoint grouping used for dashboard split (`coding_plan` or `official_api`) |
+| `endpoint_base` | string | Concrete base URL used for this request family |
 | `ok` | boolean | Success (true) or failure (false) |
 | `metrics.header_latency_ms` | float | Time to HTTP response headers for the final attempt only |
 | `metrics.first_sse_event_ms` | float | Time to first streamed SSE `data:` event (can be before visible text) |
@@ -91,12 +94,12 @@
 db.inference_runs.find().sort({ timestamp: -1 }).limit(10)
 ```
 
-**Average metrics per model**
+**Average metrics per model + endpoint family**
 ```javascript
 db.inference_runs.aggregate([
   { $match: { ok: true, metrics_version: 4 } },
   { $group: {
-    _id: "$model",
+    _id: { endpoint_family: "$endpoint_family", model: "$model" },
     avg_first_sse_event_ms: { $avg: "$metrics.first_sse_event_ms" },
     avg_first_reasoning_token_ms: { $avg: "$metrics.first_reasoning_token_ms" },
     avg_first_answer_token_ms: { $avg: "$metrics.first_answer_token_ms" },
@@ -108,6 +111,16 @@ db.inference_runs.aggregate([
     count: { $sum: 1 }
   }}
 ])
+```
+
+**Coding Plan endpoint only**
+```javascript
+db.inference_runs.find({ endpoint_family: "coding_plan" }).sort({ timestamp: -1 }).limit(20)
+```
+
+**Official API endpoint only**
+```javascript
+db.inference_runs.find({ endpoint_family: "official_api" }).sort({ timestamp: -1 }).limit(20)
 ```
 
 **Error breakdown**
@@ -124,5 +137,7 @@ The monitor creates these indexes automatically:
 
 - `{ timestamp: 1 }`
 - `{ model: 1, timestamp: 1 }`
+- `{ endpoint_family: 1, timestamp: 1 }`
+- `{ endpoint_family: 1, model: 1, timestamp: 1 }`
 - `{ ok: 1, timestamp: 1 }`
 - `{ metrics_version: 1, timestamp: 1 }`

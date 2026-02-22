@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import patch
@@ -170,6 +171,71 @@ class MonitorMetricTests(unittest.TestCase):
         self.assertAlmostEqual(result["thinking_window_ms"], 1000.0)
         self.assertAlmostEqual(result["time_to_completed_answer_ms"], 8000.0)
         self.assertAlmostEqual(result["generation_window_ms"], 4000.0)
+
+    def test_load_config_rejects_unknown_endpoint_family(self):
+        env = {
+            "ZAI_API_KEY": "test-key",
+            "ZAI_BASE_URL": "https://api.z.ai/api/coding/paas/v4",
+            "ZAI_MODEL": "glm-5",
+            "MONGODB_URI": "mongodb://example.test",
+            "ZAI_ENDPOINT_FAMILY": "unknown_family",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(monitor.ConfigError):
+                monitor.load_config()
+
+    def test_load_config_infers_official_api_endpoint_family(self):
+        env = {
+            "ZAI_API_KEY": "test-key",
+            "ZAI_BASE_URL": "https://api.z.ai/api/paas/v4",
+            "ZAI_MODEL": "glm-4.7",
+            "MONGODB_URI": "mongodb://example.test",
+        }
+        with patch.dict(os.environ, env, clear=True):
+            cfg = monitor.load_config()
+        self.assertEqual(cfg.zai_endpoint_family, monitor.ENDPOINT_FAMILY_OFFICIAL_API)
+
+    def test_build_document_includes_endpoint_family_and_provider(self):
+        cfg = monitor.Config(
+            zai_api_key="test-key",
+            zai_base_url="https://api.z.ai/api/paas/v4",
+            zai_model="glm-4.7",
+            mongodb_uri="mongodb://example.test",
+            zai_endpoint_family=monitor.ENDPOINT_FAMILY_OFFICIAL_API,
+            zai_provider="z.ai",
+        )
+        result = {
+            "ok": True,
+            "http_status": 200,
+            "attempt": 1,
+            "header_latency_ms": 100.0,
+            "first_sse_event_ms": 150.0,
+            "first_reasoning_token_ms": None,
+            "first_answer_token_ms": 200.0,
+            "ttft_ms": 200.0,
+            "thinking_window_ms": None,
+            "time_to_completed_answer_ms": 900.0,
+            "total_latency_ms": 900.0,
+            "generation_window_ms": 700.0,
+            "output_tokens_per_second": 5.0,
+            "output_tokens_per_second_end_to_end": 3.5,
+            "sse_event_count": 2,
+            "reasoning_chunk_count": 0,
+            "content_chunk_count": 2,
+            "response_text": "hello world",
+            "response_chars": 11,
+            "usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8},
+            "error": None,
+            "error_payload": None,
+            "started_at": datetime(2026, 2, 21, 0, 0, tzinfo=timezone.utc),
+            "finished_at": datetime(2026, 2, 21, 0, 1, tzinfo=timezone.utc),
+            "request_id": "req-4",
+        }
+
+        doc = monitor.build_document(cfg, "run-1", 1, "prompt text", result)
+        self.assertEqual(doc["provider"], "z.ai")
+        self.assertEqual(doc["endpoint_family"], monitor.ENDPOINT_FAMILY_OFFICIAL_API)
+        self.assertEqual(doc["endpoint_base"], "https://api.z.ai/api/paas/v4")
 
 
 if __name__ == "__main__":

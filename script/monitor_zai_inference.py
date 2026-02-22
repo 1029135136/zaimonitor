@@ -8,6 +8,8 @@ Required env vars:
 - MONGODB_URI
 
 Optional env vars:
+- ZAI_ENDPOINT_FAMILY (coding_plan|official_api; inferred from ZAI_BASE_URL when omitted)
+- ZAI_PROVIDER (default: z.ai)
 - MONGO_DB (default: zaimonitor)
 - MONGO_COLLECTION (default: inference_runs)
 - CONNECT_TIMEOUT_SECONDS (default: 15)
@@ -96,6 +98,12 @@ PROMPT_SUITE = [
 ]
 
 METRICS_VERSION = 4
+ENDPOINT_FAMILY_CODING_PLAN = "coding_plan"
+ENDPOINT_FAMILY_OFFICIAL_API = "official_api"
+ENDPOINT_FAMILY_VALUES = {
+    ENDPOINT_FAMILY_CODING_PLAN,
+    ENDPOINT_FAMILY_OFFICIAL_API,
+}
 
 
 @dataclass
@@ -104,6 +112,8 @@ class Config:
     zai_base_url: str
     zai_model: str
     mongodb_uri: str
+    zai_endpoint_family: str = ENDPOINT_FAMILY_CODING_PLAN
+    zai_provider: str = "z.ai"
     mongo_db: str = "zaimonitor"
     mongo_collection: str = "inference_runs"
     connect_timeout_seconds: int = 15
@@ -115,6 +125,26 @@ class Config:
 
 class ConfigError(Exception):
     pass
+
+
+def infer_endpoint_family(zai_base_url: str) -> str:
+    normalized = zai_base_url.rstrip("/").lower()
+    if "/api/coding/paas/v4" in normalized:
+        return ENDPOINT_FAMILY_CODING_PLAN
+    if "/api/paas/v4" in normalized:
+        return ENDPOINT_FAMILY_OFFICIAL_API
+    return ENDPOINT_FAMILY_CODING_PLAN
+
+
+def parse_endpoint_family(raw: Optional[str], zai_base_url: str) -> str:
+    if not raw:
+        return infer_endpoint_family(zai_base_url)
+
+    value = raw.strip().lower().replace("-", "_")
+    if value not in ENDPOINT_FAMILY_VALUES:
+        allowed = ", ".join(sorted(ENDPOINT_FAMILY_VALUES))
+        raise ConfigError(f"ZAI_ENDPOINT_FAMILY must be one of: {allowed}")
+    return value
 
 
 def _parse_env_line(line: str) -> Optional[Tuple[str, str]]:
@@ -168,14 +198,22 @@ def load_config() -> Config:
     if missing:
         raise ConfigError(f"Missing required env vars: {', '.join(missing)}")
 
+    zai_base_url = os.environ["ZAI_BASE_URL"].rstrip("/")
+    endpoint_family = parse_endpoint_family(os.getenv("ZAI_ENDPOINT_FAMILY"), zai_base_url)
+    provider = os.getenv("ZAI_PROVIDER", "z.ai").strip()
+    if not provider:
+        raise ConfigError("ZAI_PROVIDER cannot be empty")
+
     legacy_http_timeout = os.getenv("HTTP_TIMEOUT_SECONDS")
     stream_read_timeout = os.getenv("STREAM_READ_TIMEOUT_SECONDS", legacy_http_timeout or "600")
 
     return Config(
         zai_api_key=os.environ["ZAI_API_KEY"],
-        zai_base_url=os.environ["ZAI_BASE_URL"].rstrip("/"),
+        zai_base_url=zai_base_url,
         zai_model=os.environ["ZAI_MODEL"],
         mongodb_uri=os.environ["MONGODB_URI"],
+        zai_endpoint_family=endpoint_family,
+        zai_provider=provider,
         mongo_db=os.getenv("MONGO_DB", "zaimonitor"),
         mongo_collection=os.getenv("MONGO_COLLECTION", "inference_runs"),
         connect_timeout_seconds=int(os.getenv("CONNECT_TIMEOUT_SECONDS", "15")),
@@ -478,6 +516,14 @@ def ensure_collection_indexes(collection: Collection) -> None:
         [
             IndexModel([("timestamp", ASCENDING)], name="timestamp_asc"),
             IndexModel([("model", ASCENDING), ("timestamp", ASCENDING)], name="model_timestamp_asc"),
+            IndexModel(
+                [("endpoint_family", ASCENDING), ("timestamp", ASCENDING)],
+                name="endpoint_family_timestamp_asc",
+            ),
+            IndexModel(
+                [("endpoint_family", ASCENDING), ("model", ASCENDING), ("timestamp", ASCENDING)],
+                name="endpoint_family_model_timestamp_asc",
+            ),
             IndexModel([("ok", ASCENDING), ("timestamp", ASCENDING)], name="ok_timestamp_asc"),
             IndexModel(
                 [("metrics_version", ASCENDING), ("timestamp", ASCENDING)],
@@ -516,7 +562,8 @@ def build_document(
         "request_id": result.get("request_id"),
         "timestamp": now_utc(),
         "metrics_version": METRICS_VERSION,
-        "provider": "z.ai",
+        "provider": cfg.zai_provider,
+        "endpoint_family": cfg.zai_endpoint_family,
         "endpoint_base": cfg.zai_base_url,
         "endpoint_path": "/chat/completions",
         "model": cfg.zai_model,
@@ -561,7 +608,7 @@ def build_document(
     }
 
 
-def print_summary(run_id: str, documents: List[Dict[str, Any]]) -> None:
+def print_summary(run_id: str, cfg: Config, documents: List[Dict[str, Any]]) -> None:
     total = len(documents)
     successes = [doc for doc in documents if doc.get("ok")]
     failures = total - len(successes)
@@ -622,6 +669,10 @@ def print_summary(run_id: str, documents: List[Dict[str, Any]]) -> None:
         json.dumps(
             {
                 "run_id": run_id,
+                "provider": cfg.zai_provider,
+                "endpoint_family": cfg.zai_endpoint_family,
+                "endpoint_base": cfg.zai_base_url,
+                "model": cfg.zai_model,
                 "total_requests": total,
                 "successes": len(successes),
                 "failures": failures,
@@ -674,6 +725,8 @@ def main() -> int:
         event="run_start",
         payload={
             "run_id": run_id,
+            "provider": cfg.zai_provider,
+            "endpoint_family": cfg.zai_endpoint_family,
             "model": cfg.zai_model,
             "base_url": cfg.zai_base_url,
             "prompt_count": len(PROMPT_SUITE),
@@ -688,6 +741,7 @@ def main() -> int:
             payload={
                 "run_id": run_id,
                 "request_id": request_id,
+                "endpoint_family": cfg.zai_endpoint_family,
                 "prompt_index": prompt_index,
                 "prompt_length": len(prompt),
             },
@@ -703,6 +757,7 @@ def main() -> int:
             payload={
                 "run_id": run_id,
                 "request_id": request_id,
+                "endpoint_family": cfg.zai_endpoint_family,
                 "prompt_index": prompt_index,
                 "ok": document.get("ok"),
                 "http_status": document.get("http_status"),
@@ -727,10 +782,10 @@ def main() -> int:
             collection.insert_many(documents, ordered=True)
     except Exception as exc:
         print(f"MONGO_WRITE_ERROR: {exc}", file=sys.stderr)
-        print_summary(run_id, documents)
+        print_summary(run_id, cfg, documents)
         return 3
 
-    print_summary(run_id, documents)
+    print_summary(run_id, cfg, documents)
 
     if all(not d.get("ok", False) for d in documents):
         return 4
