@@ -6,6 +6,8 @@ export type TrendPoint = {
   visible_tps?: number;
 };
 
+export type TrendByModel = Record<string, TrendPoint[]>;
+
 export type ErrorPoint = {
   type: string;
   count: number;
@@ -40,7 +42,7 @@ export type OverviewResponse = {
     p95_ttft_ms: number | null;
     p95_total_latency_ms: number | null;
   };
-  trend: TrendPoint[];
+  trend_by_model: TrendByModel;
   errors: ErrorPoint[];
   models: string[];
   endpoint_families: string[];

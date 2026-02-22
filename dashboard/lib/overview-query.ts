@@ -57,6 +57,7 @@ interface BucketData {
 
 interface RunTrendPoint {
   timestamp: Date;
+  model: string;
   output_tps?: number;
   ttft_ms?: number;
   visible_tps?: number;
@@ -266,15 +267,16 @@ function initBucketData(): BucketData {
 }
 
 function buildRunTrendPoints(docs: InferenceDoc[]): RunTrendPoint[] {
-  const runBuckets = new Map<string, { timestamp: Date; data: BucketData }>();
+  const runBuckets = new Map<string, { timestamp: Date; model: string; data: BucketData }>();
 
   for (const [index, doc] of docs.entries()) {
     const ts = doc.timestamp;
     if (!(ts instanceof Date) || isNaN(ts.getTime())) continue;
 
     const rawRunId = typeof doc.run_id === "string" ? doc.run_id.trim() : "";
-    const runKey = rawRunId.length > 0 ? rawRunId : `legacy:${index}`;
-    const existing = runBuckets.get(runKey) || { timestamp: new Date(ts), data: initBucketData() };
+    const model = typeof doc.model === "string" && doc.model.length > 0 ? doc.model : "unknown";
+    const runKey = rawRunId.length > 0 ? `${rawRunId}|${model}` : `legacy:${index}|${model}`;
+    const existing = runBuckets.get(runKey) || { timestamp: new Date(ts), model, data: initBucketData() };
 
     if (ts.getTime() > existing.timestamp.getTime()) {
       existing.timestamp = new Date(ts);
@@ -311,9 +313,10 @@ function buildRunTrendPoints(docs: InferenceDoc[]): RunTrendPoint[] {
   }
 
   const runTrendPoints: RunTrendPoint[] = [];
-  for (const { timestamp, data } of runBuckets.values()) {
+  for (const { timestamp, model, data } of runBuckets.values()) {
     runTrendPoints.push({
       timestamp,
+      model,
       output_tps: data.output_count > 0 ? data.output_sum / data.output_count : undefined,
       ttft_ms: data.ttft_count > 0 ? data.ttft_sum / data.ttft_count : undefined,
       visible_tps: data.visible_count > 0 ? data.visible_sum / data.visible_count : undefined,
@@ -360,13 +363,13 @@ export interface OverviewResult {
     p95_ttft_ms: number | null;
     p95_total_latency_ms: number | null;
   };
-  trend: Array<{
+  trend_by_model: Record<string, Array<{
     timestamp: string;
     output_tps?: number;
     ttft_ms?: number;
     visible_tps?: number;
     provider_tps?: number;
-  }>;
+  }>>;
   errors: Array<{ type: string; count: number }>;
   models: string[];
   endpoint_families: string[];
@@ -522,16 +525,23 @@ export async function queryOverview(
   const totalLatencyValues = collectMetricValues(successDocs, "total_latency_ms");
   const cachedPromptTokenValues = collectTokenValues(docs, "cached_prompt_tokens");
 
-  const buckets = new Map<string, BucketData>();
+  const bucketsByModel = new Map<string, Map<string, BucketData>>();
   for (const point of runTrendPoints) {
     const ts = point.timestamp;
+    const model = point.model;
 
     const bucket = new Date(
       Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate(), ts.getUTCHours(), 0, 0, 0),
     );
-    const key = bucket.toISOString();
+    const bucketKey = bucket.toISOString();
 
-    const existing = buckets.get(key) || initBucketData();
+    let modelBuckets = bucketsByModel.get(model);
+    if (!modelBuckets) {
+      modelBuckets = new Map<string, BucketData>();
+      bucketsByModel.set(model, modelBuckets);
+    }
+
+    const existing = modelBuckets.get(bucketKey) || initBucketData();
 
     if (point.output_tps !== undefined && Number.isFinite(point.output_tps)) {
       existing.output_sum += point.output_tps;
@@ -550,47 +560,61 @@ export async function queryOverview(
       existing.provider_count += 1;
     }
 
-    buckets.set(key, existing);
+    modelBuckets.set(bucketKey, existing);
   }
-
-  const trend: Array<{
-    timestamp: string;
-    output_tps?: number;
-    ttft_ms?: number;
-    visible_tps?: number;
-    provider_tps?: number;
-  }> = [];
 
   const bucketSizeMs = 60 * 60 * 1000;
   const firstBucketMs = Math.floor(trendWindowStart.getTime() / bucketSizeMs) * bucketSizeMs;
   const lastBucketMs = Math.floor(trendWindowEnd.getTime() / bucketSizeMs) * bucketSizeMs;
 
-  let bucketCursor = new Date(firstBucketMs);
-  while (bucketCursor.getTime() <= lastBucketMs) {
-    const key = bucketCursor.toISOString();
-    const data = buckets.get(key);
+  const trendByModel: Record<string, Array<{
+    timestamp: string;
+    output_tps?: number;
+    ttft_ms?: number;
+    visible_tps?: number;
+    provider_tps?: number;
+  }>> = {};
 
-    trend.push({
-      timestamp: key,
-      output_tps:
-        data && data.output_count > 0
-          ? Math.round((data.output_sum / data.output_count) * 1000) / 1000
-          : undefined,
-      ttft_ms:
-        data && data.ttft_count > 0
-          ? Math.round((data.ttft_sum / data.ttft_count) * 100) / 100
-          : undefined,
-      visible_tps:
-        data && data.visible_count > 0
-          ? Math.round((data.visible_sum / data.visible_count) * 1000) / 1000
-          : undefined,
-      provider_tps:
-        data && data.provider_count > 0
-          ? Math.round((data.provider_sum / data.provider_count) * 1000) / 1000
-          : undefined,
-    });
+  const modelsWithTrend = Array.from(bucketsByModel.keys());
+  for (const model of modelsWithTrend) {
+    const modelBuckets = bucketsByModel.get(model)!;
+    const modelTrend: Array<{
+      timestamp: string;
+      output_tps?: number;
+      ttft_ms?: number;
+      visible_tps?: number;
+      provider_tps?: number;
+    }> = [];
 
-    bucketCursor = new Date(bucketCursor.getTime() + bucketSizeMs);
+    let bucketCursor = new Date(firstBucketMs);
+    while (bucketCursor.getTime() <= lastBucketMs) {
+      const bucketKey = bucketCursor.toISOString();
+      const data = modelBuckets.get(bucketKey);
+
+      modelTrend.push({
+        timestamp: bucketKey,
+        output_tps:
+          data && data.output_count > 0
+            ? Math.round((data.output_sum / data.output_count) * 1000) / 1000
+            : undefined,
+        ttft_ms:
+          data && data.ttft_count > 0
+            ? Math.round((data.ttft_sum / data.ttft_count) * 100) / 100
+            : undefined,
+        visible_tps:
+          data && data.visible_count > 0
+            ? Math.round((data.visible_sum / data.visible_count) * 1000) / 1000
+            : undefined,
+        provider_tps:
+          data && data.provider_count > 0
+            ? Math.round((data.provider_sum / data.provider_count) * 1000) / 1000
+            : undefined,
+      });
+
+      bucketCursor = new Date(bucketCursor.getTime() + bucketSizeMs);
+    }
+
+    trendByModel[model] = modelTrend;
   }
 
   const errorBreakdown = new Map<string, number>();
@@ -681,7 +705,7 @@ export async function queryOverview(
       p95_ttft_ms: p95Ttft != null ? Math.round(p95Ttft * 100) / 100 : null,
       p95_total_latency_ms: p95TotalLatency != null ? Math.round(p95TotalLatency * 100) / 100 : null,
     },
-    trend,
+    trend_by_model: trendByModel,
     errors,
     models,
     endpoint_families: ENDPOINT_FAMILIES,

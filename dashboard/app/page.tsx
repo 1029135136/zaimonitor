@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { OverviewFilters } from "@/components/overview-filters";
 import { OverviewHeader } from "@/components/overview-header";
 import { OverviewKpis } from "@/components/overview-kpis";
 import { OverviewAdditionalMetrics } from "@/components/overview-additional-metrics";
@@ -50,9 +49,8 @@ function maxIso(a: string | null | undefined, b: string | null | undefined): str
 
 export default function Home() {
   const [hours, setHours] = useState("24");
-  const [model, setModel] = useState("glm-5");
-  const [data, setData] = useState<OverviewResponse | null>(null); // Coding Plan
-  const [comparisonData, setComparisonData] = useState<OverviewResponse | null>(null); // Standard API
+  const [data, setData] = useState<OverviewResponse | null>(null);
+  const [comparisonData, setComparisonData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +64,6 @@ export default function Home() {
 
         const params = new URLSearchParams({ hours });
         params.set("endpoint_family", "both");
-        params.set("model", model);
 
         const response = await fetch(`/api/overview?${params.toString()}`, {
           cache: "no-store",
@@ -80,10 +77,6 @@ export default function Home() {
         const officialApiPayload = pairPayload.official_api;
 
         if (!cancelled) {
-          const allModels = Array.from(new Set([...codingPayload.models, ...officialApiPayload.models]));
-          if (allModels.length && !allModels.includes(model)) {
-            setModel(allModels[0]);
-          }
           setData(codingPayload);
           setComparisonData(officialApiPayload);
         }
@@ -103,9 +96,8 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [hours, model]);
+  }, [hours]);
 
-  const allModels = Array.from(new Set([...(data?.models ?? []), ...(comparisonData?.models ?? [])]));
   const latestDocumentTimestamp = maxIso(data?.latest_document_timestamp, comparisonData?.latest_document_timestamp);
   const trendWindowStart = minIso(data?.window.start, comparisonData?.window.start);
   const trendWindowEnd = maxIso(data?.window.end, comparisonData?.window.end);
@@ -155,15 +147,7 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-5 py-6 md:px-10 md:py-10">
-      <OverviewHeader latestDocumentTimestamp={latestDocumentTimestamp} />
-
-      <OverviewFilters
-        hours={hours}
-        model={model}
-        models={allModels}
-        onHoursChange={setHours}
-        onModelChange={setModel}
-      />
+      <OverviewHeader latestDocumentTimestamp={latestDocumentTimestamp} hours={hours} onHoursChange={setHours} />
 
       {error ? (
         <section className="paper-panel rounded-2xl border border-red-300 p-5 text-sm text-red-700">{error}</section>
@@ -173,8 +157,8 @@ export default function Home() {
 
       <OverviewTrend
         hours={hours}
-        trend={data?.trend ?? []}
-        comparisonTrend={comparisonData?.trend ?? []}
+        trendByModel={data?.trend_by_model ?? {}}
+        comparisonTrendByModel={comparisonData?.trend_by_model ?? {}}
         windowStart={trendWindowStart}
         windowEnd={trendWindowEnd}
       />
