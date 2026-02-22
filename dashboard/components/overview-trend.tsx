@@ -217,16 +217,11 @@ export function OverviewTrend({
     const toY = (value: number) => yBottom - ((value - axisMin) / yRange) * plotHeight;
 
     const toPathSegments = (points: Array<{ x: number; value: number | null } | null>) => {
+      const validPoints = points.filter((p): p is { x: number; value: number } => p != null && p.value != null);
+      if (validPoints.length === 0) return [];
       const pathSegments: string[] = [];
       let segment = "";
-      for (const point of points) {
-        if (!point || point.value == null) {
-          if (segment) {
-            pathSegments.push(segment);
-            segment = "";
-          }
-          continue;
-        }
+      for (const point of validPoints) {
         const y = toY(point.value);
         segment += `${segment ? " L" : "M"}${point.x.toFixed(1)},${y.toFixed(1)}`;
       }
