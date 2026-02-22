@@ -58,36 +58,40 @@ export function OverviewFilters({
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <label className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
-              Window
+              Trend Window
             </label>
-            <select
-              value={hours}
-              onChange={(event) => onHoursChange(event.target.value)}
-              className="rounded-lg border border-[color:var(--border)] bg-[color:var(--paper)] px-3 py-2 text-sm"
-            >
-              <option value="1">1h</option>
-              <option value="6">6h</option>
-              <option value="24">24h</option>
-              <option value="168">7d</option>
-            </select>
+            <div className="relative">
+              <select
+                value={hours}
+                onChange={(event) => onHoursChange(event.target.value)}
+                className="appearance-none rounded-xl border-2 border-[color:var(--card-foreground)]/25 bg-[color:var(--accent-gold)]/45 px-3 py-2 pr-9 text-sm font-medium text-[color:var(--card-foreground)] shadow-[0_8px_16px_-12px_rgba(20,25,28,0.45),inset_0_1px_0_rgba(255,255,255,0.6)] transition hover:border-[color:var(--card-foreground)]/45 focus:border-[color:var(--ring)] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]/30"
+              >
+                <option value="24">24h</option>
+                <option value="168">7d</option>
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[color:var(--card-foreground)]/75">▾</span>
+            </div>
 
             <label className="ml-2 text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
               Model
             </label>
-            <select
-              value={model}
-              onChange={(event) => onModelChange(event.target.value)}
-              className="rounded-lg border border-[color:var(--border)] bg-[color:var(--paper)] px-3 py-2 text-sm"
-            >
-              <option value="all">all</option>
-              {models.map((modelOption) => (
-                <option key={modelOption} value={modelOption}>
-                  {modelOption}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={model}
+                onChange={(event) => onModelChange(event.target.value)}
+                className="appearance-none rounded-xl border-2 border-[color:var(--card-foreground)]/25 bg-[color:var(--accent-sky)]/42 px-3 py-2 pr-9 text-sm font-medium text-[color:var(--card-foreground)] shadow-[0_8px_16px_-12px_rgba(20,25,28,0.45),inset_0_1px_0_rgba(255,255,255,0.6)] transition hover:border-[color:var(--card-foreground)]/45 focus:border-[color:var(--ring)] focus:outline-none focus:ring-2 focus:ring-[color:var(--ring)]/30"
+              >
+                <option value="all">all</option>
+                {models.map((modelOption) => (
+                  <option key={modelOption} value={modelOption}>
+                    {modelOption}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[color:var(--card-foreground)]/75">▾</span>
+            </div>
           </div>
 
           <p className="font-mono text-xs text-[color:var(--muted-foreground)]">

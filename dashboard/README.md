@@ -14,7 +14,7 @@ Next.js dashboard for visualizing inference metrics written by `script/monitor_z
 1. `app/api/overview/route.ts` handles browser requests.
 2. The route executes `lib/overview_query.py`.
 3. The Python helper reads MongoDB via `pymongo` and returns JSON.
-4. `app/page.tsx` renders overview panels and refreshes every 5 minutes.
+4. `app/page.tsx` renders overview panels and refetches on page load and filter changes.
 
 ## Run locally
 
@@ -36,7 +36,7 @@ If `DASHBOARD_PYTHON_BIN` is not set, the route tries `../script/.venv/bin/pytho
 
 ## Structure
 
-- `app/page.tsx`: page orchestration, polling, filter state
+- `app/page.tsx`: page orchestration and filter state
 - `app/api/overview/route.ts`: API endpoint for overview payload
 - `components/overview-*.tsx`: presentational sections
 - `lib/overview-types.ts`: shared response types

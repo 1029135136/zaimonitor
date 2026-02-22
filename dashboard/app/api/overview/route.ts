@@ -11,9 +11,9 @@ export const runtime = "nodejs";
 
 function parseHours(raw: string | null): string {
   if (!raw) return "24";
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) return "24";
-  return String(n);
+  const normalized = raw.trim();
+  if (normalized === "24" || normalized === "168") return normalized;
+  return "24";
 }
 
 function parseModel(raw: string | null): string {

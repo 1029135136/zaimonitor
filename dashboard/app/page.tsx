@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { OverviewFilters } from "@/components/overview-filters";
 import { OverviewHeader } from "@/components/overview-header";
 import { OverviewKpis } from "@/components/overview-kpis";
 import { OverviewAdditionalMetrics } from "@/components/overview-additional-metrics";
-import { OverviewNotes } from "@/components/overview-notes";
 import { OverviewTrend } from "@/components/overview-trend";
-import { buildLinePath } from "@/lib/overview-chart";
 import { formatEta, formatUtc, msToSecondsLabel } from "@/lib/overview-format";
 import type { KpiItem, OverviewResponse } from "@/lib/overview-types";
 
@@ -18,7 +16,6 @@ export default function Home() {
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeTick, setTimeTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,33 +56,10 @@ export default function Home() {
 
     void load();
 
-    const interval = window.setInterval(() => {
-      void load();
-    }, 300_000);
-
     return () => {
       cancelled = true;
-      window.clearInterval(interval);
     };
   }, [hours, model, endpointFamily]);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setTimeTick((current) => current + 1);
-    }, 15_000);
-
-    return () => window.clearInterval(interval);
-  }, []);
-
-  const trendValues = useMemo(
-    () =>
-      data?.trend.length
-        ? data.trend.map((point) => point.output_tps ?? point.visible_tps ?? point.provider_tps ?? 0)
-        : [0],
-    [data],
-  );
-
-  const trendPath = useMemo(() => buildLinePath(trendValues, 660, 210), [trendValues]);
 
   const scheduleText = data?.schedule?.cadence_label ?? ":30 each hour (UTC)";
   const nextRunText = `${formatUtc(data?.schedule?.next_run_utc ?? null)} UTC`;
@@ -95,7 +69,7 @@ export default function Home() {
     {
       label: "Avg TTFT",
       value: msToSecondsLabel(data?.metrics.avg_ttft_ms ?? null),
-      delta: `avg over ${hours}h`,
+      delta: "rolling last 24h",
       tone: "bg-[color:var(--accent-sky)]/55",
     },
     {
@@ -108,18 +82,25 @@ export default function Home() {
       label: "Success Rate",
       value:
         data?.totals.success_rate_percent != null ? `${data.totals.success_rate_percent.toFixed(1)}%` : "-",
-      delta: data?.totals.failures != null ? `${data.totals.failures} failed runs` : "-",
+      delta: data?.totals.failures != null ? `${data.totals.failures} failed runs (24h)` : "-",
       tone: "bg-[color:var(--accent-gold)]/60",
     },
     {
       label: "p95 Latency",
       value: msToSecondsLabel(data?.metrics.p95_total_latency_ms ?? null),
-      delta: data?.totals.requests != null ? `from ${data.totals.requests} requests` : "-",
+      delta: data?.totals.requests != null ? `from ${data.totals.requests} requests (24h)` : "-",
       tone: "bg-[color:var(--accent-rose)]/58",
     },
+    {
+      label: "Avg E2E TPS",
+      value:
+        data?.metrics.avg_provider_tps_end_to_end != null
+          ? data.metrics.avg_provider_tps_end_to_end.toFixed(2)
+          : "-",
+      delta: "completion_tokens / total_latency",
+      tone: "bg-[color:var(--accent-sky)]/45",
+    },
   ];
-
-  void timeTick;
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-5 py-6 md:px-10 md:py-10">
@@ -143,11 +124,13 @@ export default function Home() {
 
       <OverviewKpis items={kpis} loading={loading} />
 
-      <section className="grid gap-4 lg:grid-cols-[1.8fr_1fr]">
-        <OverviewTrend hours={hours} path={trendPath} />
-        <OverviewNotes model={model} endpointFamily={endpointFamily} data={data} />
-      </section>
-
+      <OverviewTrend
+        hours={hours}
+        trend={data?.trend ?? []}
+        windowStart={data?.window.start ?? null}
+        windowEnd={data?.window.end ?? null}
+      />
+    
       <OverviewAdditionalMetrics data={data} />
     </div>
   );
