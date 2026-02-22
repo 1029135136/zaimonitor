@@ -81,6 +81,7 @@ class MonitorMetricTests(unittest.TestCase):
         self.assertAlmostEqual(result["generation_window_ms"], 2000.0)
         self.assertAlmostEqual(result["output_tokens_per_second"], 2.0)
         self.assertAlmostEqual(result["output_tokens_per_second_end_to_end"], 1.0)
+        self.assertAlmostEqual(result["output_tokens_per_second_post_ttft"], 1.5)
         self.assertEqual(result["sse_event_count"], 1)
         self.assertEqual(result["content_chunk_count"], 1)
 
@@ -126,6 +127,7 @@ class MonitorMetricTests(unittest.TestCase):
         self.assertAlmostEqual(result["generation_window_ms"], 4000.0)
         self.assertAlmostEqual(result["output_tokens_per_second"], 2.0)
         self.assertAlmostEqual(result["output_tokens_per_second_end_to_end"], 1.3333333333)
+        self.assertAlmostEqual(result["output_tokens_per_second_post_ttft"], 1.75)
         self.assertEqual(result["sse_event_count"], 2)
         self.assertEqual(result["content_chunk_count"], 1)
 
@@ -171,6 +173,7 @@ class MonitorMetricTests(unittest.TestCase):
         self.assertAlmostEqual(result["thinking_window_ms"], 1000.0)
         self.assertAlmostEqual(result["time_to_completed_answer_ms"], 8000.0)
         self.assertAlmostEqual(result["generation_window_ms"], 4000.0)
+        self.assertAlmostEqual(result["output_tokens_per_second_post_ttft"], 1.8)
 
     def test_load_config_rejects_unknown_endpoint_family(self):
         env = {

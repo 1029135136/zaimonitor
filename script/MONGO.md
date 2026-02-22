@@ -34,6 +34,7 @@
     "generation_window_ms": 900,
     "provider_output_tokens_per_second": 45.5,
     "provider_output_tokens_per_second_end_to_end": 31.2,
+    "output_tokens_per_second_post_ttft": 40.2,
     "visible_output_tokens_per_second": 42.1,
     "output_chars_per_second": 210.5,
     "sse_event_count": 18,
@@ -78,6 +79,7 @@
 | `metrics.generation_window_ms` | float | First answer token to stream completion (`[DONE]`) |
 | `metrics.provider_output_tokens_per_second` | float | Throughput from `completion_tokens / generation_window` |
 | `metrics.provider_output_tokens_per_second_end_to_end` | float | Throughput from `completion_tokens / total_latency` |
+| `metrics.output_tokens_per_second_post_ttft` | float | Throughput from `(completion_tokens - 1) / (total_latency - ttft)` |
 | `metrics.visible_output_tokens_per_second` | float | Throughput from visible text token estimate |
 | `metrics.sse_event_count` | int | Count of streamed SSE data events parsed |
 | `metrics.reasoning_chunk_count` | int | Count of streamed chunks that contained `reasoning_content` |

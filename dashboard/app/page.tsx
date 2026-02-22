@@ -80,7 +80,7 @@ export default function Home() {
   const trendValues = useMemo(
     () =>
       data?.trend.length
-        ? data.trend.map((point) => point.visible_tps ?? point.provider_tps ?? 0)
+        ? data.trend.map((point) => point.output_tps ?? point.visible_tps ?? point.provider_tps ?? 0)
         : [0],
     [data],
   );
@@ -99,12 +99,9 @@ export default function Home() {
       tone: "bg-[color:var(--accent-sky)]/55",
     },
     {
-      label: "Avg TPS",
-      value: data?.metrics.avg_visible_tps != null ? data.metrics.avg_visible_tps.toFixed(2) : "-",
-      delta:
-        data?.metrics.avg_provider_tps != null
-          ? `provider-reported ${data.metrics.avg_provider_tps.toFixed(2)}`
-          : "-",
+      label: "Avg Output TPS",
+      value: data?.metrics.avg_output_tps != null ? data.metrics.avg_output_tps.toFixed(2) : "-",
+      delta: "(completion_tokens - 1) / (total_latency - ttft)",
       tone: "bg-[color:var(--accent-mint)]/60",
     },
     {

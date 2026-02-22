@@ -401,6 +401,7 @@ def stream_chat_completion(
                 generation_window_ms = None
                 output_tokens_per_second = None
                 output_tokens_per_second_end_to_end = None
+                output_tokens_per_second_post_ttft = None
                 time_to_completed_answer_ms = None
 
                 if first_sse_event_mono is not None:
@@ -426,6 +427,15 @@ def stream_chat_completion(
                 time_to_completed_answer_ms = total_latency_ms
                 if completion_tokens is not None and total_latency_ms > 0:
                     output_tokens_per_second_end_to_end = completion_tokens / (total_latency_ms / 1000)
+                if (
+                    completion_tokens is not None
+                    and completion_tokens > 1
+                    and ttft_ms is not None
+                    and total_latency_ms > ttft_ms
+                ):
+                    output_tokens_per_second_post_ttft = (completion_tokens - 1) / (
+                        (total_latency_ms - ttft_ms) / 1000
+                    )
 
                 return {
                     "ok": True,
@@ -446,6 +456,7 @@ def stream_chat_completion(
                     "generation_window_ms": generation_window_ms,
                     "output_tokens_per_second": output_tokens_per_second,
                     "output_tokens_per_second_end_to_end": output_tokens_per_second_end_to_end,
+                    "output_tokens_per_second_post_ttft": output_tokens_per_second_post_ttft,
                     "sse_event_count": sse_event_count,
                     "reasoning_chunk_count": reasoning_chunk_count,
                     "content_chunk_count": content_chunk_count,
@@ -585,6 +596,7 @@ def build_document(
             "generation_window_ms": generation_window_ms,
             "provider_output_tokens_per_second": result.get("output_tokens_per_second"),
             "provider_output_tokens_per_second_end_to_end": result.get("output_tokens_per_second_end_to_end"),
+            "output_tokens_per_second_post_ttft": result.get("output_tokens_per_second_post_ttft"),
             "visible_output_tokens_per_second": visible_tokens_per_second,
             "output_chars_per_second": chars_per_second,
             "sse_event_count": result.get("sse_event_count"),
@@ -659,6 +671,11 @@ def print_summary(run_id: str, cfg: Config, documents: List[Dict[str, Any]]) -> 
         for doc in successes
         if doc.get("metrics", {}).get("visible_output_tokens_per_second") is not None
     ]
+    output_tps_post_ttft_values = [
+        doc["metrics"]["output_tokens_per_second_post_ttft"]
+        for doc in successes
+        if doc.get("metrics", {}).get("output_tokens_per_second_post_ttft") is not None
+    ]
     total_latency_values = [
         doc["metrics"]["total_latency_ms"]
         for doc in successes
@@ -684,6 +701,9 @@ def print_summary(run_id: str, cfg: Config, documents: List[Dict[str, Any]]) -> 
                 "avg_thinking_window_ms": mean(thinking_window_values) if thinking_window_values else None,
                 "avg_time_to_completed_answer_ms": mean(completed_answer_values) if completed_answer_values else None,
                 "avg_provider_output_tokens_per_second": mean(tps_values) if tps_values else None,
+                "avg_output_tokens_per_second_post_ttft": mean(output_tps_post_ttft_values)
+                if output_tps_post_ttft_values
+                else None,
                 "avg_visible_output_tokens_per_second": mean(visible_tps_values) if visible_tps_values else None,
                 "avg_total_latency_ms": mean(total_latency_values) if total_latency_values else None,
                 "max_total_latency_ms": max(total_latency_values) if total_latency_values else None,
@@ -770,6 +790,7 @@ def main() -> int:
                 "time_to_completed_answer_ms": document.get("metrics", {}).get("time_to_completed_answer_ms"),
                 "total_latency_ms": document.get("metrics", {}).get("total_latency_ms"),
                 "provider_output_tokens_per_second": document.get("metrics", {}).get("provider_output_tokens_per_second"),
+                "output_tokens_per_second_post_ttft": document.get("metrics", {}).get("output_tokens_per_second_post_ttft"),
                 "visible_output_tokens_per_second": document.get("metrics", {}).get("visible_output_tokens_per_second"),
             },
             enabled=cfg.log_progress,

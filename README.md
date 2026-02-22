@@ -47,6 +47,7 @@ Example:
 
 ## Metrics (v4)
 - `ttft_ms`: time to first streamed provider token (`reasoning_content` or `content`).
+- `output_tokens_per_second_post_ttft`: `(completion_tokens - 1) / (total_latency_ms - ttft_ms)`.
 - `first_answer_token_ms`: time to first answer `content` token.
 - `time_to_completed_answer_ms`: request start to completed answer stream.
 
