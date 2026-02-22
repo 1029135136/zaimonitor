@@ -333,7 +333,7 @@ export function OverviewTrend({
                     type="monotone"
                     stroke="var(--color-glm47_coding)"
                     strokeWidth={2}
-                    dot={isMobile ? false : { fill: "var(--color-glm47_coding)", r: 3 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls
                   />
