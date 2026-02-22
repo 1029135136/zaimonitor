@@ -25,6 +25,11 @@ export function OverviewKpis({ items, loading }: OverviewKpisProps) {
             {kpi.label}
           </div>
           <p className="font-display text-4xl text-[color:var(--card-foreground)]">{loading ? "…" : kpi.value}</p>
+          {kpi.secondary_value ? (
+            <p className="mt-1 font-mono text-xs text-[color:var(--chart-4)]">
+              {kpi.secondary_label ?? "Normal API"}: {loading ? "…" : kpi.secondary_value}
+            </p>
+          ) : null}
           <p className="mt-2 font-mono text-xs text-[color:var(--muted-foreground)]">{kpi.delta}</p>
         </article>
       ))}

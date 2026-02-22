@@ -56,6 +56,8 @@ export type OverviewResponse = {
 export type KpiItem = {
   label: string;
   value: string;
+  secondary_value?: string;
+  secondary_label?: string;
   delta: string;
   tone: string;
 };

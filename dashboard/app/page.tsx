@@ -9,11 +9,46 @@ import { OverviewTrend } from "@/components/overview-trend";
 import { msToSecondsLabel } from "@/lib/overview-format";
 import type { KpiItem, OverviewResponse } from "@/lib/overview-types";
 
+const CODING_PLAN_ENDPOINT_FAMILY = "coding_plan";
+const OFFICIAL_API_ENDPOINT_FAMILY = "official_api";
+
+function formatPercent(value: number | null | undefined): string {
+  return value != null ? `${value.toFixed(1)}%` : "-";
+}
+
+function formatRate(value: number | null | undefined): string {
+  return value != null ? value.toFixed(2) : "-";
+}
+
+function parseIsoOrNull(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function minIso(a: string | null | undefined, b: string | null | undefined): string | null {
+  const aMs = parseIsoOrNull(a);
+  const bMs = parseIsoOrNull(b);
+  if (aMs == null && bMs == null) return null;
+  if (aMs == null) return b ?? null;
+  if (bMs == null) return a ?? null;
+  return aMs <= bMs ? (a ?? null) : (b ?? null);
+}
+
+function maxIso(a: string | null | undefined, b: string | null | undefined): string | null {
+  const aMs = parseIsoOrNull(a);
+  const bMs = parseIsoOrNull(b);
+  if (aMs == null && bMs == null) return null;
+  if (aMs == null) return b ?? null;
+  if (bMs == null) return a ?? null;
+  return aMs >= bMs ? (a ?? null) : (b ?? null);
+}
+
 export default function Home() {
   const [hours, setHours] = useState("24");
   const [model, setModel] = useState("glm-5");
-  const [endpointFamily, setEndpointFamily] = useState("coding_plan");
-  const [data, setData] = useState<OverviewResponse | null>(null);
+  const [data, setData] = useState<OverviewResponse | null>(null); // Coding Plan
+  const [comparisonData, setComparisonData] = useState<OverviewResponse | null>(null); // Normal API
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,24 +60,39 @@ export default function Home() {
         setLoading(true);
         setError(null);
 
-        const params = new URLSearchParams({ hours });
-        params.set("endpoint_family", endpointFamily);
-        params.set("model", model);
+        const queryFor = (endpointFamily: string) => {
+          const params = new URLSearchParams({ hours });
+          params.set("endpoint_family", endpointFamily);
+          params.set("model", model);
+          return params.toString();
+        };
 
-        const response = await fetch(`/api/overview?${params.toString()}`, {
-          cache: "no-store",
-        });
+        const [codingResponse, officialApiResponse] = await Promise.all([
+          fetch(`/api/overview?${queryFor(CODING_PLAN_ENDPOINT_FAMILY)}`, {
+            cache: "no-store",
+          }),
+          fetch(`/api/overview?${queryFor(OFFICIAL_API_ENDPOINT_FAMILY)}`, {
+            cache: "no-store",
+          }),
+        ]);
 
-        if (!response.ok) {
-          throw new Error(`Request failed (${response.status})`);
+        if (!codingResponse.ok || !officialApiResponse.ok) {
+          const status = !codingResponse.ok ? codingResponse.status : officialApiResponse.status;
+          throw new Error(`Request failed (${status})`);
         }
 
-        const payload = (await response.json()) as OverviewResponse;
+        const [codingPayload, officialApiPayload] = (await Promise.all([
+          codingResponse.json(),
+          officialApiResponse.json(),
+        ])) as [OverviewResponse, OverviewResponse];
+
         if (!cancelled) {
-          if (payload.models.length && !payload.models.includes(model)) {
-            setModel(payload.models[0]);
+          const allModels = Array.from(new Set([...codingPayload.models, ...officialApiPayload.models]));
+          if (allModels.length && !allModels.includes(model)) {
+            setModel(allModels[0]);
           }
-          setData(payload);
+          setData(codingPayload);
+          setComparisonData(officialApiPayload);
         }
       } catch (err) {
         if (!cancelled) {
@@ -60,42 +110,53 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [hours, model, endpointFamily]);
+  }, [hours, model]);
 
-  const scheduleText = data?.schedule?.cadence_label ?? "Updates every four hours";
+  const scheduleText =
+    data?.schedule?.cadence_label ?? comparisonData?.schedule?.cadence_label ?? "Updates every four hours";
+  const allModels = Array.from(new Set([...(data?.models ?? []), ...(comparisonData?.models ?? [])]));
+  const latestDocumentTimestamp = maxIso(data?.latest_document_timestamp, comparisonData?.latest_document_timestamp);
+  const trendWindowStart = minIso(data?.window.start, comparisonData?.window.start);
+  const trendWindowEnd = maxIso(data?.window.end, comparisonData?.window.end);
 
   const kpis: KpiItem[] = [
     {
       label: "Avg TTFT",
       value: msToSecondsLabel(data?.metrics.avg_ttft_ms ?? null),
+      secondary_value: msToSecondsLabel(comparisonData?.metrics.avg_ttft_ms ?? null),
+      secondary_label: "Normal API",
       delta: "rolling last 24h",
       tone: "bg-[color:var(--accent-sky)]/55",
     },
     {
       label: "Avg Output TPS",
-      value: data?.metrics.avg_output_tps != null ? data.metrics.avg_output_tps.toFixed(2) : "-",
+      value: formatRate(data?.metrics.avg_output_tps),
+      secondary_value: formatRate(comparisonData?.metrics.avg_output_tps),
+      secondary_label: "Normal API",
       delta: "compl_tokens / (total_latency - ttft)",
       tone: "bg-[color:var(--accent-mint)]/60",
     },
     {
       label: "Success Rate",
-      value:
-        data?.totals.success_rate_percent != null ? `${data.totals.success_rate_percent.toFixed(1)}%` : "-",
+      value: formatPercent(data?.totals.success_rate_percent),
+      secondary_value: formatPercent(comparisonData?.totals.success_rate_percent),
+      secondary_label: "Normal API",
       delta: data?.totals.failures != null ? `${data.totals.failures} failed runs (24h)` : "-",
       tone: "bg-[color:var(--accent-gold)]/60",
     },
     {
       label: "p95 TTFT",
       value: msToSecondsLabel(data?.metrics.p95_ttft_ms ?? null),
+      secondary_value: msToSecondsLabel(comparisonData?.metrics.p95_ttft_ms ?? null),
+      secondary_label: "Normal API",
       delta: data?.totals.requests != null ? `from ${data.totals.requests} requests (24h)` : "-",
       tone: "bg-[color:var(--accent-rose)]/58",
     },
     {
       label: "Avg E2E TPS",
-      value:
-        data?.metrics.avg_provider_tps_end_to_end != null
-          ? data.metrics.avg_provider_tps_end_to_end.toFixed(2)
-          : "-",
+      value: formatRate(data?.metrics.avg_provider_tps_end_to_end),
+      secondary_value: formatRate(comparisonData?.metrics.avg_provider_tps_end_to_end),
+      secondary_label: "Normal API",
       delta: "compl_tokens / total_latency",
       tone: "bg-[color:var(--accent-sky)]/45",
     },
@@ -103,18 +164,14 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-5 py-6 md:px-10 md:py-10">
-      <OverviewHeader scheduleText={scheduleText}/>
+      <OverviewHeader scheduleText={scheduleText} latestDocumentTimestamp={latestDocumentTimestamp} />
 
       <OverviewFilters
         hours={hours}
         model={model}
-        endpointFamily={endpointFamily}
-        models={data?.models ?? []}
-        endpointFamilies={data?.endpoint_families ?? ["coding_plan", "official_api"]}
-        latestDocumentTimestamp={data?.latest_document_timestamp ?? null}
+        models={allModels}
         onHoursChange={setHours}
         onModelChange={setModel}
-        onEndpointFamilyChange={setEndpointFamily}
       />
 
       {error ? (
@@ -126,8 +183,9 @@ export default function Home() {
       <OverviewTrend
         hours={hours}
         trend={data?.trend ?? []}
-        windowStart={data?.window.start ?? null}
-        windowEnd={data?.window.end ?? null}
+        comparisonTrend={comparisonData?.trend ?? []}
+        windowStart={trendWindowStart}
+        windowEnd={trendWindowEnd}
       />
     
       <OverviewAdditionalMetrics data={data} />

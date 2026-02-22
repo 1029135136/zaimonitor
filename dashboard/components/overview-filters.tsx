@@ -1,15 +1,11 @@
-import { formatUtc } from "@/lib/overview-format";
+import Link from "next/link";
 
 type OverviewFiltersProps = {
   hours: string;
   model: string;
-  endpointFamily: string;
   models: string[];
-  endpointFamilies: string[];
-  latestDocumentTimestamp: string | null;
   onHoursChange: (value: string) => void;
   onModelChange: (value: string) => void;
-  onEndpointFamilyChange: (value: string) => void;
 };
 
 const WINDOW_OPTIONS = [
@@ -21,12 +17,6 @@ const MODEL_OPTIONS = [
   { value: "glm-5", label: "glm-5" },
   { value: "glm-4.7", label: "glm-4.7" },
 ] as const;
-
-function endpointFamilyLabel(value: string): string {
-  if (value === "coding_plan") return "Coding Plan API";
-  if (value === "official_api") return "Normal API";
-  return value;
-}
 
 type FlickSwitchProps = {
   options: readonly { value: string; label: string }[];
@@ -66,13 +56,9 @@ function FlickSwitch({ options, value, onChange, className }: FlickSwitchProps) 
 export function OverviewFilters({
   hours,
   model,
-  endpointFamily,
   models,
-  endpointFamilies,
-  latestDocumentTimestamp,
   onHoursChange,
   onModelChange,
-  onEndpointFamilyChange,
 }: OverviewFiltersProps) {
   const availableModels = MODEL_OPTIONS.filter((option) => models.includes(option.value));
   const modelOptions = availableModels.length ? availableModels : MODEL_OPTIONS;
@@ -80,30 +66,9 @@ export function OverviewFilters({
   return (
     <section className="paper-panel paper-noise fade-up fade-up-delay-1 rounded-2xl p-4 md:p-5">
       <div className="flex flex-col gap-4">
-        <div>
-          <p className="mb-2 text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">
-            API Endpoint
-          </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {endpointFamilies.map((family) => {
-              const selected = endpointFamily === family;
-              return (
-                <button
-                  key={family}
-                  type="button"
-                  onClick={() => onEndpointFamilyChange(family)}
-                  className={`rounded-xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                    selected
-                      ? "border-[color:var(--card-foreground)] bg-[color:var(--accent-gold)]/58 text-[color:var(--card-foreground)]"
-                      : "border-[color:var(--border)] bg-[color:var(--paper)] text-[color:var(--muted-foreground)] hover:bg-[color:var(--accent-sky)]/30"
-                  }`}
-                >
-                  {endpointFamilyLabel(family)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <p className="text-xs text-[color:var(--muted-foreground)]">
+          Showing Coding Plan API with Normal API comparison.
+        </p>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -121,9 +86,12 @@ export function OverviewFilters({
             </div>
           </div>
 
-          <p className="font-mono text-xs text-[color:var(--muted-foreground)]">
-            latest: {formatUtc(latestDocumentTimestamp)} UTC
-          </p>
+          <Link
+            href="/methodology"
+            className="inline-flex h-10 items-center justify-center rounded-lg border-2 border-[color:var(--card-foreground)]/22 bg-[color:var(--paper)]/65 px-3 text-sm leading-none font-semibold text-[color:var(--muted-foreground)] transition hover:bg-[color:var(--accent-sky)]/35 sm:h-8"
+          >
+            Methodology
+          </Link>
         </div>
       </div>
     </section>

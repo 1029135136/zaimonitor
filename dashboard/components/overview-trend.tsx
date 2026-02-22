@@ -6,6 +6,7 @@ type TrendMetricKey = "output_tps" | "visible_tps" | "provider_tps";
 type OverviewTrendProps = {
   hours: string;
   trend: TrendPoint[];
+  comparisonTrend: TrendPoint[];
   windowStart: string | null;
   windowEnd: string | null;
 };
@@ -49,17 +50,20 @@ function formatUtcDate(raw: string | null): string {
   });
 }
 
-export function OverviewTrend({ hours, trend, windowStart, windowEnd }: OverviewTrendProps) {
+export function OverviewTrend({ hours, trend, comparisonTrend, windowStart, windowEnd }: OverviewTrendProps) {
   const [metric, setMetric] = useState<TrendMetricKey>("output_tps");
   const metricHasData = useMemo(() => {
-    const hasDataFor = (key: TrendMetricKey) =>
-      trend.some((point) => typeof point[key] === "number" && Number.isFinite(point[key]));
+    const hasDataFor = (series: TrendPoint[], key: TrendMetricKey) =>
+      series.some((point) => typeof point[key] === "number" && Number.isFinite(point[key]));
     return {
-      output_tps: hasDataFor("output_tps"),
-      visible_tps: hasDataFor("visible_tps"),
-      provider_tps: hasDataFor("provider_tps"),
+      output_tps:
+        hasDataFor(trend, "output_tps") || hasDataFor(comparisonTrend, "output_tps"),
+      visible_tps:
+        hasDataFor(trend, "visible_tps") || hasDataFor(comparisonTrend, "visible_tps"),
+      provider_tps:
+        hasDataFor(trend, "provider_tps") || hasDataFor(comparisonTrend, "provider_tps"),
     };
-  }, [trend]);
+  }, [comparisonTrend, trend]);
 
   const effectiveMetric: TrendMetricKey = metricHasData[metric]
     ? metric
@@ -83,7 +87,8 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
         avg: null,
         latest: null,
         changePercent: null,
-        pathSegments: [] as string[],
+        primaryPathSegments: [] as string[],
+        comparisonPathSegments: [] as string[],
         xTicks: [] as { x: number; label: string }[],
         hasData: false,
       };
@@ -100,22 +105,32 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
     const domainEndMs = end.getTime();
     const domainSpanMs = Math.max(domainEndMs - domainStartMs, 1);
 
-    const points = trend.map((point) => {
-      const ts = parseIso(point.timestamp);
-      if (!ts) return null;
-      const xRatio = (ts.getTime() - domainStartMs) / domainSpanMs;
-      const clampedXRatio = Math.max(0, Math.min(1, xRatio));
-      const value = point[effectiveMetric];
-      const numericValue = typeof value === "number" && Number.isFinite(value) ? value : null;
-      return {
-        x: xStart + clampedXRatio * plotWidth,
-        value: numericValue,
-      };
-    });
+    const toPoints = (series: TrendPoint[]) =>
+      series.map((point) => {
+        const ts = parseIso(point.timestamp);
+        if (!ts) return null;
+        const xRatio = (ts.getTime() - domainStartMs) / domainSpanMs;
+        const clampedXRatio = Math.max(0, Math.min(1, xRatio));
+        const value = point[effectiveMetric];
+        const numericValue = typeof value === "number" && Number.isFinite(value) ? value : null;
+        return {
+          x: xStart + clampedXRatio * plotWidth,
+          value: numericValue,
+        };
+      });
 
-    const nonNullValues = points
+    const primaryPoints = toPoints(trend);
+    const comparisonPoints = toPoints(comparisonTrend);
+
+    const primaryValues = primaryPoints
       .map((point) => point?.value ?? null)
       .filter((value): value is number => value != null);
+
+    const comparisonValues = comparisonPoints
+      .map((point) => point?.value ?? null)
+      .filter((value): value is number => value != null);
+
+    const nonNullValues = [...primaryValues, ...comparisonValues];
 
     const rangeHours = domainSpanMs / 3_600_000;
     const tickStepHours = rangeHours <= 24 ? 6 : 24;
@@ -141,7 +156,8 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
         avg: null,
         latest: null,
         changePercent: null,
-        pathSegments: [] as string[],
+        primaryPathSegments: [] as string[],
+        comparisonPathSegments: [] as string[],
         xTicks,
         hasData: false,
       };
@@ -149,28 +165,33 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
 
     const min = Math.min(...nonNullValues);
     const max = Math.max(...nonNullValues);
-    const avg = nonNullValues.reduce((sum, value) => sum + value, 0) / nonNullValues.length;
-    const latest = nonNullValues[nonNullValues.length - 1];
-    const first = nonNullValues[0];
-    const changePercent = first > 0 ? ((latest - first) / first) * 100 : null;
     const yRange = Math.max(max - min, 0.001);
 
-    const pathSegments: string[] = [];
-    let segment = "";
-    for (const point of points) {
-      if (!point || point.value == null) {
-        if (segment) {
-          pathSegments.push(segment);
-          segment = "";
+    const statsValues = primaryValues.length ? primaryValues : comparisonValues;
+    const avg = statsValues.reduce((sum, value) => sum + value, 0) / statsValues.length;
+    const latest = statsValues[statsValues.length - 1];
+    const first = statsValues[0];
+    const changePercent = first > 0 ? ((latest - first) / first) * 100 : null;
+
+    const toPathSegments = (points: Array<{ x: number; value: number | null } | null>) => {
+      const pathSegments: string[] = [];
+      let segment = "";
+      for (const point of points) {
+        if (!point || point.value == null) {
+          if (segment) {
+            pathSegments.push(segment);
+            segment = "";
+          }
+          continue;
         }
-        continue;
+        const y = yBottom - ((point.value - min) / yRange) * plotHeight;
+        segment += `${segment ? " L" : "M"}${point.x.toFixed(1)},${y.toFixed(1)}`;
       }
-      const y = yBottom - ((point.value - min) / yRange) * plotHeight;
-      segment += `${segment ? " L" : "M"}${point.x.toFixed(1)},${y.toFixed(1)}`;
-    }
-    if (segment) {
-      pathSegments.push(segment);
-    }
+      if (segment) {
+        pathSegments.push(segment);
+      }
+      return pathSegments;
+    };
 
     return {
       yTop,
@@ -180,11 +201,12 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
       avg,
       latest,
       changePercent,
-      pathSegments,
+      primaryPathSegments: toPathSegments(primaryPoints),
+      comparisonPathSegments: toPathSegments(comparisonPoints),
       xTicks,
       hasData: true,
     };
-  }, [effectiveMetric, trend, windowStart, windowEnd]);
+  }, [comparisonTrend, effectiveMetric, trend, windowEnd, windowStart]);
 
   return (
     <article className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
@@ -218,6 +240,17 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
         })}
       </div>
 
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-xs">
+        <span className="inline-flex items-center gap-2 text-[color:var(--card-foreground)]">
+          <span className="h-2 w-4 rounded-full" style={{ backgroundColor: activeOption.stroke }} aria-hidden />
+          Coding Plan API
+        </span>
+        <span className="inline-flex items-center gap-2 text-[color:var(--chart-4)]">
+          <span className="h-2 w-4 rounded-full bg-[color:var(--chart-4)]" aria-hidden />
+          Normal API
+        </span>
+      </div>
+
       <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/50 p-3 md:p-5">
         {!chart.hasData ? (
           <p className="py-16 text-center text-sm text-[color:var(--muted-foreground)]">
@@ -237,7 +270,18 @@ export function OverviewTrend({ hours, trend, windowStart, windowEnd }: Overview
                   </text>
                 </g>
               ))}
-              {chart.pathSegments.map((segment) => (
+              {chart.comparisonPathSegments.map((segment) => (
+                <path
+                  key={`normal-${segment}`}
+                  d={segment}
+                  fill="none"
+                  stroke="var(--chart-4)"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  opacity="0.85"
+                />
+              ))}
+              {chart.primaryPathSegments.map((segment) => (
                 <path key={segment} d={segment} fill="none" stroke={activeOption.stroke} strokeWidth="3" strokeLinecap="round" />
               ))}
               <text x="648" y={chart.yTop! + 4} textAnchor="end" className="fill-[color:var(--muted-foreground)] font-mono text-[10px]">
