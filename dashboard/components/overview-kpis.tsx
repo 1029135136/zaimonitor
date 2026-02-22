@@ -24,7 +24,7 @@ function KpiCardPrimary({ label, delta, tone, unit, formatValue, data, compariso
         {label}
       </div>
       
-      <div className="grid grid-cols-[auto_repeat(2,1fr)] gap-x-6 gap-y-2">
+      <div className="grid grid-cols-[auto_repeat(2,1fr)] gap-x-6 gap-y-3">
         <div />
         {MODELS.map((model) => (
           <p key={model} className={`font-display text-sm font-medium text-[color:var(--card-foreground)] ${model === "glm-5" ? "font-bold ml-2" : ""}`}>
@@ -43,7 +43,7 @@ function KpiCardPrimary({ label, delta, tone, unit, formatValue, data, compariso
           );
         })}
         
-        <p className="font-mono text-sm text-[color:var(--muted-foreground)] pt-3">Standard</p>
+        <p className="font-mono text-sm text-[color:var(--muted-foreground)] pt-1">Standard</p>
         {MODELS.map((model) => {
           const value = formatValue(comparisonData[model] || {});
           return (
@@ -124,8 +124,8 @@ export function OverviewKpisPrimary({ data, comparisonData }: OverviewKpisProps)
   return (
     <section className="grid gap-4 sm:grid-cols-2">
       <KpiCardPrimary
-        label="Tokens per Second"
-        delta="post time-to-first-token"
+        label="Tokens per Second Avg"
+        delta=""
         tone="bg-[color:var(--accent-mint)]/60"
         unit="tps"
         formatValue={(m: ModelMetrics) => formatRate(m.avg_output_tps)}
@@ -133,8 +133,8 @@ export function OverviewKpisPrimary({ data, comparisonData }: OverviewKpisProps)
         comparisonData={comparisonData}
       />
       <KpiCardPrimary
-        label="Time to First Token"
-        delta="rolling last 24h"
+        label="Time to First Token Avg"
+        delta=""
         tone="bg-[color:var(--accent-sky)]/55"
         unit="s"
         formatValue={(m: ModelMetrics) => msToSeconds(m.avg_ttft_ms)}
@@ -164,7 +164,7 @@ export function OverviewKpisSecondary({ data, comparisonData }: OverviewKpisProp
         comparisonData={comparisonData}
       />
       <KpiCardSecondary
-        label="End-to-End Throughput"
+        label="End-to-End Throughput Avg"
         delta="completion tokens / total latency"
         tone="bg-[color:var(--accent-sky)]/45"
         unit="tps"

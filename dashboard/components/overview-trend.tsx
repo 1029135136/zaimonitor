@@ -250,26 +250,27 @@ export function OverviewTrend({
         })}
       </div>
 
-      <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/50 p-3 md:p-5">
+      <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/50 p-2 md:p-5">
         {!hasData ? (
           <p className="py-16 text-center text-sm text-[color:var(--muted-foreground)]">
             No trend data in this window for {activeMetric.label}.
           </p>
         ) : (
           <>
-            <ChartContainer config={chartConfig} className="h-56 w-full">
+            <ChartContainer config={chartConfig} className="h-48 md:h-56 w-full">
               <LineChart
                 accessibilityLayer
                 data={chartData}
-                margin={{ left: 12, right: 12, top: 4, bottom: 4 }}
+                margin={{ left: isMobile ? 4 : 12, right: isMobile ? 4 : 12, top: 4, bottom: 4 }}
               >
                 <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
                 <XAxis
                   dataKey="timestamp"
                   tickLine={false}
                   axisLine={false}
-                  tickMargin={8}
-                  minTickGap={32}
+                  tickMargin={isMobile ? 4 : 8}
+                  minTickGap={isMobile ? 24 : 32}
+                  tick={{ fontSize: isMobile ? 10 : 12 }}
                   tickFormatter={(value) => {
                     const date = new Date(value)
                     return date.toLocaleTimeString([], {
@@ -283,7 +284,9 @@ export function OverviewTrend({
                 <YAxis
                   tickLine={false}
                   axisLine={false}
-                  tickMargin={8}
+                  tickMargin={isMobile ? 4 : 8}
+                  tick={{ fontSize: isMobile ? 10 : 12 }}
+                  width={isMobile ? 32 : 45}
                   tickFormatter={(value) => {
                     if (metric === "ttft_ms") return `${(value / 1000).toFixed(1)}s`
                     return value.toFixed(1)
@@ -374,7 +377,7 @@ export function OverviewTrend({
             </ChartContainer>
 
             {/* Legend with toggle buttons */}
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs">
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
               {MODELS.map((model) => (
                 <div key={model} className="flex items-center gap-2">
                   {/* Coding series */}
@@ -411,7 +414,7 @@ export function OverviewTrend({
               ))}
             </div>
 
-            <div className="mt-3 flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">
+            <div className="mt-2 flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">
               <span className="font-mono">
                 {formatUtcDate(windowStart)} {formatUtcTime(windowStart)} UTC
               </span>

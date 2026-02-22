@@ -1,5 +1,4 @@
 import { formatUtc } from "@/lib/overview-format";
-import { ThemeToggle } from "@/components/theme-toggle";
 
 type OverviewHeaderProps = {
   latestDocumentTimestamp: string | null;
@@ -47,7 +46,6 @@ export function OverviewHeader({ latestDocumentTimestamp, hours, onHoursChange }
               );
             })}
           </div>
-          <ThemeToggle />
           <div className="hidden space-y-2 sm:block">
             <p className="font-mono text-xs text-[color:var(--muted-foreground)]">
               latest: {formatUtc(latestDocumentTimestamp)} UTC
