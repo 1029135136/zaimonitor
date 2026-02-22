@@ -64,7 +64,6 @@ export default function Home() {
 
   const scheduleText = data?.schedule?.cadence_label ?? "Updates every hour";
 
-
   const kpis: KpiItem[] = [
     {
       label: "Avg TTFT",

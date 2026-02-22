@@ -1,10 +1,8 @@
 type OverviewHeaderProps = {
   scheduleText: string;
-  nextRunText: string;
-  etaText: string;
 };
 
-export function OverviewHeader({ scheduleText}: OverviewHeaderProps) {
+export function OverviewHeader({ scheduleText }: OverviewHeaderProps) {
   return (
     <header className="paper-panel paper-noise fade-up rounded-3xl p-6 md:p-8">
       <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
