@@ -34,11 +34,13 @@ npm run dev
 ## Scheduler
 Run the collector on `:30` (cron). The dashboard can pull shortly after completion.
 
-The GitHub workflow runs 4 executions every cycle:
-- coding_plan + glm-5
-- coding_plan + glm-4.7
-- official_api + glm-5
-- official_api + glm-4.7
+GitHub Actions cadence:
+- `coding_plan` workflow: hourly (`10 * * * *`)
+- `official_api` workflow: every 2 hours (`40 */2 * * *`)
+
+Each run executes both models:
+- `glm-5`
+- `glm-4.7`
 
 Example:
 ```bash
