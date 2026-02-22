@@ -188,7 +188,7 @@ export default function Home() {
         windowEnd={trendWindowEnd}
       />
     
-      <OverviewAdditionalMetrics data={data} />
+      <OverviewAdditionalMetrics data={data} comparisonData={comparisonData} />
     </div>
   );
 }

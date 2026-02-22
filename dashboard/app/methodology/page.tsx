@@ -37,7 +37,7 @@ export default function MethodologyPage() {
       </section>
 
       <section className="paper-panel paper-noise fade-up fade-up-delay-2 rounded-3xl p-6 md:p-8">
-        <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Prompt Suite (From Script)</h2>
+        <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Prompt Suite</h2>
         <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
           The monitor uses three prompt types to avoid overfitting to one response style.
         </p>

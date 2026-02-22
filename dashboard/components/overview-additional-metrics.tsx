@@ -3,13 +3,19 @@ import type { OverviewResponse } from "@/lib/overview-types";
 
 type OverviewAdditionalMetricsProps = {
   data: OverviewResponse | null;
+  comparisonData: OverviewResponse | null;
 };
 
-export function OverviewAdditionalMetrics({ data }: OverviewAdditionalMetricsProps) {
+export function OverviewAdditionalMetrics({ data, comparisonData }: OverviewAdditionalMetricsProps) {
   const metrics = data?.metrics;
+  const comparisonMetrics = comparisonData?.metrics;
   const avgProviderTps = metrics?.avg_provider_tps != null ? metrics.avg_provider_tps.toFixed(2) : "-";
+  const comparisonAvgProviderTps =
+    comparisonMetrics?.avg_provider_tps != null ? comparisonMetrics.avg_provider_tps.toFixed(2) : "-";
   const avgCachedPromptTokens =
     metrics?.avg_cached_prompt_tokens != null ? metrics.avg_cached_prompt_tokens.toFixed(2) : "-";
+  const comparisonAvgCachedPromptTokens =
+    comparisonMetrics?.avg_cached_prompt_tokens != null ? comparisonMetrics.avg_cached_prompt_tokens.toFixed(2) : "-";
 
   return (
     <details className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
@@ -29,12 +35,32 @@ export function OverviewAdditionalMetrics({ data }: OverviewAdditionalMetricsPro
       ) : null}
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <MetricItem label="Avg Time to Completed Answer" value={msToSecondsLabel(metrics?.avg_time_to_completed_answer_ms ?? null)} />
-        <MetricItem label="Avg First Reasoning Token" value={msToSecondsLabel(metrics?.avg_first_reasoning_token_ms ?? null)} />
-        <MetricItem label="Avg First Answer Token" value={msToSecondsLabel(metrics?.avg_first_answer_token_ms ?? null)} />
-        <MetricItem label="Avg Thinking Window" value={msToSecondsLabel(metrics?.avg_thinking_window_ms ?? null)} />
-        <MetricItem label="Avg Provider TPS" value={avgProviderTps} />
-        <MetricItem label="Avg Cached Prompt Tokens" value={avgCachedPromptTokens} />
+        <MetricItem
+          label="Avg Time to Completed Answer"
+          value={msToSecondsLabel(metrics?.avg_time_to_completed_answer_ms ?? null)}
+          secondaryValue={msToSecondsLabel(comparisonMetrics?.avg_time_to_completed_answer_ms ?? null)}
+        />
+        <MetricItem
+          label="Avg First Reasoning Token"
+          value={msToSecondsLabel(metrics?.avg_first_reasoning_token_ms ?? null)}
+          secondaryValue={msToSecondsLabel(comparisonMetrics?.avg_first_reasoning_token_ms ?? null)}
+        />
+        <MetricItem
+          label="Avg First Answer Token"
+          value={msToSecondsLabel(metrics?.avg_first_answer_token_ms ?? null)}
+          secondaryValue={msToSecondsLabel(comparisonMetrics?.avg_first_answer_token_ms ?? null)}
+        />
+        <MetricItem
+          label="Avg Thinking Window"
+          value={msToSecondsLabel(metrics?.avg_thinking_window_ms ?? null)}
+          secondaryValue={msToSecondsLabel(comparisonMetrics?.avg_thinking_window_ms ?? null)}
+        />
+        <MetricItem label="Avg Provider TPS" value={avgProviderTps} secondaryValue={comparisonAvgProviderTps} />
+        <MetricItem
+          label="Avg Cached Prompt Tokens"
+          value={avgCachedPromptTokens}
+          secondaryValue={comparisonAvgCachedPromptTokens}
+        />
       </div>
     </details>
   );
@@ -43,13 +69,17 @@ export function OverviewAdditionalMetrics({ data }: OverviewAdditionalMetricsPro
 type MetricItemProps = {
   label: string;
   value: string;
+  secondaryValue?: string;
 };
 
-function MetricItem({ label, value }: MetricItemProps) {
+function MetricItem({ label, value, secondaryValue }: MetricItemProps) {
   return (
     <article className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 p-3">
       <p className="font-mono text-xs tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">{label}</p>
       <p className="mt-1 text-lg text-[color:var(--card-foreground)]">{value}</p>
+      {secondaryValue ? (
+        <p className="mt-1 font-mono text-xs text-[color:var(--chart-4)]">Normal API: {secondaryValue}</p>
+      ) : null}
     </article>
   );
 }
