@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 import time
 import uuid
@@ -216,12 +215,6 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def estimate_visible_tokens(text: str) -> int:
-    if not text:
-        return 0
-    return len(re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE))
-
-
 def _as_optional_int(value: Any) -> Optional[int]:
     if value is None:
         return None
@@ -290,14 +283,8 @@ def stream_chat_completion(
         attempt_start_wall = now_utc()
         last_attempt_start_mono = attempt_start_mono
         last_attempt_start_wall = attempt_start_wall
-        text_parts: List[str] = []
-        first_sse_event_mono: Optional[float] = None
         first_any_token_mono: Optional[float] = None
-        first_reasoning_mono: Optional[float] = None
         first_answer_mono: Optional[float] = None
-        sse_event_count = 0
-        reasoning_chunk_count = 0
-        content_chunk_count = 0
         usage: Dict[str, Optional[int]] = {
             "prompt_tokens": None,
             "completion_tokens": None,
@@ -335,11 +322,12 @@ def stream_chat_completion(
                         "started_at": attempt_start_wall,
                         "finished_at": now_utc(),
                         "header_latency_ms": header_latency_ms,
+                        "first_answer_token_ms": None,
                         "ttft_ms": None,
                         "total_latency_ms": (finish_mono - attempt_start_mono) * 1000,
                         "generation_window_ms": None,
-                        "response_text": "",
-                        "response_chars": 0,
+                        "output_tokens_per_second_end_to_end": None,
+                        "output_tokens_per_second_post_ttft": None,
                         "usage": usage,
                         "request_id": request_id,
                     }
@@ -348,17 +336,12 @@ def stream_chat_completion(
                     if raw_line is None:
                         continue
                     line = raw_line.strip()
-                    if not line:
-                        continue
-                    if not line.startswith("data:"):
+                    if not line or not line.startswith("data:"):
                         continue
 
                     data = line[5:].strip()
                     if data == "[DONE]":
                         break
-                    if first_sse_event_mono is None:
-                        first_sse_event_mono = time.monotonic()
-                    sse_event_count += 1
 
                     event = _safe_json_loads(data)
                     if not event:
@@ -376,11 +359,8 @@ def stream_chat_completion(
                             reasoning_content = delta.get("reasoning_content")
                             if isinstance(reasoning_content, str) and reasoning_content:
                                 token_mono = time.monotonic()
-                                if first_reasoning_mono is None:
-                                    first_reasoning_mono = token_mono
                                 if first_any_token_mono is None:
                                     first_any_token_mono = token_mono
-                                reasoning_chunk_count += 1
 
                             content = delta.get("content")
                             if isinstance(content, str) and content:
@@ -389,43 +369,23 @@ def stream_chat_completion(
                                     first_answer_mono = token_mono
                                 if first_any_token_mono is None:
                                     first_any_token_mono = token_mono
-                                content_chunk_count += 1
-                                text_parts.append(content)
+
                 finish_mono = time.monotonic()
 
-                response_text = "".join(text_parts)
-                first_sse_event_ms = None
-                first_reasoning_token_ms = None
                 first_answer_token_ms = None
                 ttft_ms = None
-                thinking_window_ms = None
                 generation_window_ms = None
-                output_tokens_per_second = None
                 output_tokens_per_second_end_to_end = None
                 output_tokens_per_second_post_ttft = None
-                time_to_completed_answer_ms = None
 
-                if first_sse_event_mono is not None:
-                    first_sse_event_ms = (first_sse_event_mono - attempt_start_mono) * 1000
-                if first_reasoning_mono is not None:
-                    first_reasoning_token_ms = (first_reasoning_mono - attempt_start_mono) * 1000
                 if first_answer_mono is not None:
                     first_answer_token_ms = (first_answer_mono - attempt_start_mono) * 1000
                     generation_window_ms = max((finish_mono - first_answer_mono) * 1000, 0.0)
                 if first_any_token_mono is not None:
                     ttft_ms = (first_any_token_mono - attempt_start_mono) * 1000
-                if first_reasoning_mono is not None and first_answer_mono is not None:
-                    thinking_window_ms = max((first_answer_mono - first_reasoning_mono) * 1000, 0.0)
 
                 completion_tokens = usage.get("completion_tokens")
-                if (
-                    completion_tokens is not None
-                    and generation_window_ms is not None
-                    and generation_window_ms > 0
-                ):
-                    output_tokens_per_second = completion_tokens / (generation_window_ms / 1000)
                 total_latency_ms = (finish_mono - attempt_start_mono) * 1000
-                time_to_completed_answer_ms = total_latency_ms
                 if completion_tokens is not None and total_latency_ms > 0:
                     output_tokens_per_second_end_to_end = completion_tokens / (total_latency_ms / 1000)
                 if (
@@ -447,22 +407,12 @@ def stream_chat_completion(
                     "started_at": attempt_start_wall,
                     "finished_at": now_utc(),
                     "header_latency_ms": header_latency_ms,
-                    "first_sse_event_ms": first_sse_event_ms,
-                    "first_reasoning_token_ms": first_reasoning_token_ms,
                     "first_answer_token_ms": first_answer_token_ms,
                     "ttft_ms": ttft_ms,
-                    "thinking_window_ms": thinking_window_ms,
-                    "time_to_completed_answer_ms": time_to_completed_answer_ms,
                     "total_latency_ms": total_latency_ms,
                     "generation_window_ms": generation_window_ms,
-                    "output_tokens_per_second": output_tokens_per_second,
                     "output_tokens_per_second_end_to_end": output_tokens_per_second_end_to_end,
                     "output_tokens_per_second_post_ttft": output_tokens_per_second_post_ttft,
-                    "sse_event_count": sse_event_count,
-                    "reasoning_chunk_count": reasoning_chunk_count,
-                    "content_chunk_count": content_chunk_count,
-                    "response_text": response_text,
-                    "response_chars": len(response_text),
                     "usage": usage,
                     "request_id": request_id,
                 }
@@ -483,11 +433,12 @@ def stream_chat_completion(
                 "started_at": attempt_start_wall,
                 "finished_at": now_utc(),
                 "header_latency_ms": None,
+                "first_answer_token_ms": None,
                 "ttft_ms": None,
                 "total_latency_ms": (finish_mono - attempt_start_mono) * 1000,
                 "generation_window_ms": None,
-                "response_text": "",
-                "response_chars": 0,
+                "output_tokens_per_second_end_to_end": None,
+                "output_tokens_per_second_post_ttft": None,
                 "usage": usage,
                 "request_id": request_id,
             }
@@ -502,11 +453,12 @@ def stream_chat_completion(
         "started_at": last_attempt_start_wall,
         "finished_at": now_utc(),
         "header_latency_ms": None,
+        "first_answer_token_ms": None,
         "ttft_ms": None,
         "total_latency_ms": (finish_mono - last_attempt_start_mono) * 1000,
         "generation_window_ms": None,
-        "response_text": "",
-        "response_chars": 0,
+        "output_tokens_per_second_end_to_end": None,
+        "output_tokens_per_second_post_ttft": None,
         "usage": {
             "prompt_tokens": None,
             "completion_tokens": None,
@@ -555,14 +507,6 @@ def build_document(
     usage = result.get("usage") or {}
     completion_tokens = usage.get("completion_tokens")
     cached_prompt_tokens = usage.get("cached_prompt_tokens")
-    response_text = result.get("response_text") or ""
-    visible_output_tokens_estimate = estimate_visible_tokens(response_text)
-
-    visible_tokens_per_second = None
-    generation_window_ms = result.get("generation_window_ms")
-    response_chars = result.get("response_chars")
-    if generation_window_ms and generation_window_ms > 0 and response_chars is not None:
-        visible_tokens_per_second = visible_output_tokens_estimate / (generation_window_ms / 1000)
 
     return {
         "timestamp": now_utc(),
@@ -573,18 +517,12 @@ def build_document(
         "model": cfg.zai_model,
         "ok": result.get("ok", False),
         "metrics": {
-            "first_sse_event_ms": result.get("first_sse_event_ms"),
-            "first_reasoning_token_ms": result.get("first_reasoning_token_ms"),
             "first_answer_token_ms": result.get("first_answer_token_ms"),
             "ttft_ms": result.get("ttft_ms"),
-            "thinking_window_ms": result.get("thinking_window_ms"),
-            "time_to_completed_answer_ms": result.get("time_to_completed_answer_ms"),
             "total_latency_ms": result.get("total_latency_ms"),
-            "generation_window_ms": generation_window_ms,
-            "provider_output_tokens_per_second": result.get("output_tokens_per_second"),
+            "generation_window_ms": result.get("generation_window_ms"),
             "provider_output_tokens_per_second_end_to_end": result.get("output_tokens_per_second_end_to_end"),
             "output_tokens_per_second_post_ttft": result.get("output_tokens_per_second_post_ttft"),
-            "visible_output_tokens_per_second": visible_tokens_per_second,
         },
         "tokens": {
             "completion_tokens": completion_tokens,
@@ -606,51 +544,20 @@ def print_summary(run_id: str, cfg: Config, documents: List[Dict[str, Any]]) -> 
         for doc in successes
         if doc.get("metrics", {}).get("ttft_ms") is not None
     ]
-    first_sse_values = [
-        doc["metrics"]["first_sse_event_ms"]
-        for doc in successes
-        if doc.get("metrics", {}).get("first_sse_event_ms") is not None
-    ]
-    first_reasoning_values = [
-        doc["metrics"]["first_reasoning_token_ms"]
-        for doc in successes
-        if doc.get("metrics", {}).get("first_reasoning_token_ms") is not None
-    ]
-    thinking_window_values = [
-        doc["metrics"]["thinking_window_ms"]
-        for doc in successes
-        if doc.get("metrics", {}).get("thinking_window_ms") is not None
-    ]
     first_answer_values = [
         doc["metrics"]["first_answer_token_ms"]
         for doc in successes
         if doc.get("metrics", {}).get("first_answer_token_ms") is not None
     ]
-    completed_answer_values = [
-        doc["metrics"]["time_to_completed_answer_ms"]
-        for doc in successes
-        if doc.get("metrics", {}).get("time_to_completed_answer_ms") is not None
-    ]
-    ttft_gap_values = [
-        doc["metrics"]["ttft_ms"] - doc["metrics"]["first_sse_event_ms"]
-        for doc in successes
-        if doc.get("metrics", {}).get("ttft_ms") is not None
-        and doc.get("metrics", {}).get("first_sse_event_ms") is not None
-    ]
-    tps_values = [
-        doc["metrics"]["provider_output_tokens_per_second"]
-        for doc in successes
-        if doc.get("metrics", {}).get("provider_output_tokens_per_second") is not None
-    ]
-    visible_tps_values = [
-        doc["metrics"]["visible_output_tokens_per_second"]
-        for doc in successes
-        if doc.get("metrics", {}).get("visible_output_tokens_per_second") is not None
-    ]
     output_tps_post_ttft_values = [
         doc["metrics"]["output_tokens_per_second_post_ttft"]
         for doc in successes
         if doc.get("metrics", {}).get("output_tokens_per_second_post_ttft") is not None
+    ]
+    provider_tps_e2e_values = [
+        doc["metrics"]["provider_output_tokens_per_second_end_to_end"]
+        for doc in successes
+        if doc.get("metrics", {}).get("provider_output_tokens_per_second_end_to_end") is not None
     ]
     total_latency_values = [
         doc["metrics"]["total_latency_ms"]
@@ -669,18 +576,10 @@ def print_summary(run_id: str, cfg: Config, documents: List[Dict[str, Any]]) -> 
                 "total_requests": total,
                 "successes": len(successes),
                 "failures": failures,
-                "avg_first_sse_event_ms": mean(first_sse_values) if first_sse_values else None,
-                "avg_first_reasoning_token_ms": mean(first_reasoning_values) if first_reasoning_values else None,
                 "avg_first_answer_token_ms": mean(first_answer_values) if first_answer_values else None,
                 "avg_ttft_ms": mean(ttft_values) if ttft_values else None,
-                "avg_sse_to_visible_gap_ms": mean(ttft_gap_values) if ttft_gap_values else None,
-                "avg_thinking_window_ms": mean(thinking_window_values) if thinking_window_values else None,
-                "avg_time_to_completed_answer_ms": mean(completed_answer_values) if completed_answer_values else None,
-                "avg_provider_output_tokens_per_second": mean(tps_values) if tps_values else None,
-                "avg_output_tokens_per_second_post_ttft": mean(output_tps_post_ttft_values)
-                if output_tps_post_ttft_values
-                else None,
-                "avg_visible_output_tokens_per_second": mean(visible_tps_values) if visible_tps_values else None,
+                "avg_output_tokens_per_second_post_ttft": mean(output_tps_post_ttft_values) if output_tps_post_ttft_values else None,
+                "avg_provider_output_tokens_per_second_end_to_end": mean(provider_tps_e2e_values) if provider_tps_e2e_values else None,
                 "avg_total_latency_ms": mean(total_latency_values) if total_latency_values else None,
                 "max_total_latency_ms": max(total_latency_values) if total_latency_values else None,
                 "timestamp": now_utc().isoformat(),
@@ -758,16 +657,11 @@ def main() -> int:
                 "ok": result.get("ok"),
                 "http_status": result.get("http_status"),
                 "header_latency_ms": result.get("header_latency_ms"),
-                "first_sse_event_ms": result.get("first_sse_event_ms"),
-                "first_reasoning_token_ms": result.get("first_reasoning_token_ms"),
                 "first_answer_token_ms": result.get("first_answer_token_ms"),
                 "ttft_ms": result.get("ttft_ms"),
-                "thinking_window_ms": result.get("thinking_window_ms"),
-                "time_to_completed_answer_ms": result.get("time_to_completed_answer_ms"),
                 "total_latency_ms": result.get("total_latency_ms"),
-                "provider_output_tokens_per_second": result.get("output_tokens_per_second"),
                 "output_tokens_per_second_post_ttft": result.get("output_tokens_per_second_post_ttft"),
-                "visible_output_tokens_per_second": document.get("metrics", {}).get("visible_output_tokens_per_second"),
+                "provider_output_tokens_per_second_end_to_end": result.get("output_tokens_per_second_end_to_end"),
                 "cached_prompt_tokens": document.get("tokens", {}).get("cached_prompt_tokens"),
             },
             enabled=cfg.log_progress,
