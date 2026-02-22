@@ -1,4 +1,5 @@
 import { formatUtc } from "@/lib/overview-format";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 type OverviewHeaderProps = {
   latestDocumentTimestamp: string | null;
@@ -19,10 +20,13 @@ export function OverviewHeader({latestDocumentTimestamp }: OverviewHeaderProps) 
             Unscientific benchmarking of Z.AI inference speeds across different models, endpoints, and time ranges.
           </p>
         </div>
-        <div className="space-y-2 self-start md:self-auto">
-          <p className="font-mono text-xs text-[color:var(--muted-foreground)]">
-            latest run: {formatUtc(latestDocumentTimestamp)} UTC
-          </p>
+        <div className="flex items-center gap-4 self-start md:self-auto">
+          <ThemeToggle />
+          <div className="space-y-2">
+            <p className="font-mono text-xs text-[color:var(--muted-foreground)]">
+              latest run: {formatUtc(latestDocumentTimestamp)} UTC
+            </p>
+          </div>
         </div>
       </div>
     </header>
