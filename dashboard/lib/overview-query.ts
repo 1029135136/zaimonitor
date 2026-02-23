@@ -256,7 +256,7 @@ export async function queryOverview(
   const requestedHours = Math.max(params.hours, 24);
   const trendWindowDurationMs = requestedHours * 60 * 60 * 1000;
   const nowUtc = new Date();
-  const metricsWindowStart = new Date(nowUtc.getTime() - 24 * 60 * 60 * 1000);
+  const metricsWindowStart = new Date(nowUtc.getTime() - requestedHours * 60 * 60 * 1000);
 
   const client = await getMongoClient(mongoUri);
   const db = client.db(dbName);
