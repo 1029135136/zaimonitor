@@ -79,7 +79,7 @@ export default function MethodologyPage() {
       <div className="fade-up fade-up-delay-3">
         <Link
           href="/"
-          className="inline-flex items-center justify-center rounded-full border border-[color:var(--border)] bg-[color:var(--paper)]/80 px-4 py-2 text-xs font-medium tracking-[0.1em] text-[color:var(--card-foreground)] uppercase transition hover:bg-[color:var(--accent-sky)]/35"
+          className="quiet-link inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm leading-none font-semibold text-[color:var(--muted-foreground)] transition sm:h-8"
         >
           Back to Dashboard
         </Link>
