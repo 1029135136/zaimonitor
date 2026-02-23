@@ -1,41 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { OverviewHeader } from "@/components/overview-header";
 import { OverviewKpisPrimary, OverviewKpisSecondary } from "@/components/overview-kpis";
 import { OverviewTrend } from "@/components/overview-trend";
-import type { OverviewResponse } from "@/lib/overview-types";
+import { useOverviewData } from "@/hooks/use-overview-data";
 
 export default function Home() {
   const [hours, setHours] = useState("24");
-  const [data, setData] = useState<OverviewResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        setError(null);
-
-        const response = await fetch(`/api/overview?${new URLSearchParams({ hours }).toString()}`, { cache: "no-store" });
-        if (!response.ok) throw new Error(`Request failed (${response.status})`);
-
-        const payload = (await response.json()) as OverviewResponse;
-        if (!cancelled) {
-          setData(payload);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load overview");
-        }
-      }
-    };
-
-    void load();
-    return () => { cancelled = true; };
-  }, [hours]);
+  const { data, error } = useOverviewData(hours);
 
   const latestDocumentTimestamp = data?.latest_document_timestamp ?? null;
   const trendWindowStart = data?.window.start ?? null;
