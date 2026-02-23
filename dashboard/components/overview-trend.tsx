@@ -345,7 +345,7 @@ export function OverviewTrend({
                     stroke="var(--color-glm47_standard)"
                     strokeWidth={2}
                     strokeDasharray="5 5"
-                    dot={isMobile ? false : { fill: "var(--color-glm47_standard)", r: 3 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls
                   />
@@ -356,7 +356,7 @@ export function OverviewTrend({
                     type="monotone"
                     stroke="var(--color-glm5_coding)"
                     strokeWidth={2}
-                    dot={isMobile ? false : { fill: "var(--color-glm5_coding)", r: 3 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls
                   />
@@ -368,7 +368,7 @@ export function OverviewTrend({
                     stroke="var(--color-glm5_standard)"
                     strokeWidth={2}
                     strokeDasharray="5 5"
-                    dot={isMobile ? false : { fill: "var(--color-glm5_standard)", r: 3 }}
+                    dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls
                   />
