@@ -3,6 +3,9 @@ import { queryOverview } from "@/lib/overview-query";
 
 export const runtime = "nodejs";
 
+const CACHE_EDGE_TTL_SECONDS = 300;
+const CACHE_STALE_TTL_SECONDS = 600;
+
 function parseHours(raw: string | null): number {
   if (!raw) return 24;
   const normalized = raw.trim();
@@ -23,7 +26,9 @@ export async function GET(request: Request) {
     const payload = await queryOverview(mongoUri, { hours });
 
     return NextResponse.json(payload, {
-      headers: { "cache-control": "private, no-store" },
+      headers: {
+        "cache-control": `public, s-maxage=${CACHE_EDGE_TTL_SECONDS}, stale-while-revalidate=${CACHE_STALE_TTL_SECONDS}`,
+      },
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "Failed to fetch overview";
