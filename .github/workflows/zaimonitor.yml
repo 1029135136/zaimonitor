@@ -1,14 +1,14 @@
 name: ZAI Inference Monitor (Coding Plan)
 
 on:
-#   push:
-#     branches:
-#       - main
-#     paths:
-#       - script/**
+  push:
+    branches:
+      - main
+    paths:
+      - script/**
 
   schedule:
-    - cron: "10 * * * *"   # at :10 every hour (UTC)
+    - cron: "*/40 * * * *"   # every 40 minutes (UTC)
 
   workflow_dispatch:
 
@@ -43,11 +43,10 @@ jobs:
         run: |
           set +e
           failures=0
-          for model in glm-5 glm-4.7; do
+          for model in glm-5 glm-4.7-flash; do
             echo "::group::coding_plan / ${model}"
             ZAI_BASE_URL="https://api.z.ai/api/coding/paas/v4" \
             ZAI_MODEL="${model}" \
-            ZAI_ENDPOINT_FAMILY="coding_plan" \
             python monitor_zai_inference.py
             status=$?
             echo "::endgroup::"

@@ -175,36 +175,24 @@ class MonitorMetricTests(unittest.TestCase):
         self.assertAlmostEqual(result["generation_window_ms"], 4000.0)
         self.assertAlmostEqual(result["output_tokens_per_second_post_ttft"], 1.8)
 
-    def test_load_config_rejects_unknown_endpoint_family(self):
+    def test_load_config_infers_coding_plan_endpoint_family(self):
         env = {
             "ZAI_API_KEY": "test-key",
             "ZAI_BASE_URL": "https://api.z.ai/api/coding/paas/v4",
-            "ZAI_MODEL": "glm-5",
-            "MONGODB_URI": "mongodb://example.test",
-            "ZAI_ENDPOINT_FAMILY": "unknown_family",
-        }
-        with patch.dict(os.environ, env, clear=True):
-            with self.assertRaises(monitor.ConfigError):
-                monitor.load_config()
-
-    def test_load_config_infers_official_api_endpoint_family(self):
-        env = {
-            "ZAI_API_KEY": "test-key",
-            "ZAI_BASE_URL": "https://api.z.ai/api/paas/v4",
             "ZAI_MODEL": "glm-4.7",
             "MONGODB_URI": "mongodb://example.test",
         }
         with patch.dict(os.environ, env, clear=True):
             cfg = monitor.load_config()
-        self.assertEqual(cfg.zai_endpoint_family, monitor.ENDPOINT_FAMILY_OFFICIAL_API)
+        self.assertEqual(cfg.zai_endpoint_family, monitor.ENDPOINT_FAMILY_CODING_PLAN)
 
     def test_build_document_uses_lean_schema_and_captures_cached_tokens(self):
         cfg = monitor.Config(
             zai_api_key="test-key",
-            zai_base_url="https://api.z.ai/api/paas/v4",
+            zai_base_url="https://api.z.ai/api/coding/paas/v4",
             zai_model="glm-4.7",
             mongodb_uri="mongodb://example.test",
-            zai_endpoint_family=monitor.ENDPOINT_FAMILY_OFFICIAL_API,
+            zai_endpoint_family=monitor.ENDPOINT_FAMILY_CODING_PLAN,
             zai_provider="z.ai",
         )
         result = {
@@ -241,8 +229,8 @@ class MonitorMetricTests(unittest.TestCase):
         }
 
         doc = monitor.build_document(cfg, "run-123", result)
-        self.assertEqual(doc["endpoint_family"], monitor.ENDPOINT_FAMILY_OFFICIAL_API)
-        self.assertEqual(doc["endpoint_base"], "https://api.z.ai/api/paas/v4")
+        self.assertEqual(doc["endpoint_family"], monitor.ENDPOINT_FAMILY_CODING_PLAN)
+        self.assertEqual(doc["endpoint_base"], "https://api.z.ai/api/coding/paas/v4")
         self.assertEqual(doc["run_id"], "run-123")
         self.assertEqual(doc["tokens"]["completion_tokens"], 5)
         self.assertEqual(doc["tokens"]["cached_prompt_tokens"], 2)

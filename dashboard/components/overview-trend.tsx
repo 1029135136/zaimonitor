@@ -1,227 +1,187 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useState } from "react"
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
-import type { TrendByModel, TrendPoint } from "@/lib/overview-types"
+import { useEffect, useMemo, useState } from "react";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import type { TrendByModel, TrendPoint } from "@/lib/overview-types";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
-} from "@/components/ui/chart"
+} from "@/components/ui/chart";
 
-type TrendMetricKey = "output_tps" | "ttft_ms"
+type TrendMetricKey = "output_tps" | "ttft_ms";
 
 type OverviewTrendProps = {
-  hours: string
-  trendByModel: TrendByModel
-  comparisonTrendByModel: TrendByModel
-  windowStart: string | null
-  windowEnd: string | null
-}
+  trendByModel: TrendByModel;
+  windowStart: string | null;
+  windowEnd: string | null;
+};
 
-const MODELS = ["glm-5", "glm-4.7"] as const
-type ModelKey = (typeof MODELS)[number]
+const MODELS = ["glm-5", "glm-4.7", "glm-4.7-flash"] as const;
+type ModelKey = (typeof MODELS)[number];
+
+type SeriesKey = "glm47" | "glm47flash" | "glm5";
 
 const MODEL_COLORS: Record<ModelKey, string> = {
   "glm-4.7": "var(--chart-1)",
+  "glm-4.7-flash": "var(--chart-3)",
   "glm-5": "var(--chart-2)",
-}
+};
 
 const MODEL_LABELS: Record<ModelKey, string> = {
   "glm-4.7": "GLM-4.7",
+  "glm-4.7-flash": "GLM-4.7-Flash",
   "glm-5": "GLM-5",
-}
+};
 
 const METRIC_OPTIONS: { key: TrendMetricKey; label: string }[] = [
   { key: "output_tps", label: "Tokens/sec" },
   { key: "ttft_ms", label: "Time to First Token" },
-]
+];
 
 function formatMetricValue(metric: TrendMetricKey, value: number | null): string {
-  if (value == null || !Number.isFinite(value)) return "-"
-  if (metric === "ttft_ms") return `${(value / 1000).toFixed(2)}s`
-  return `${value.toFixed(2)} tps`
+  if (value == null || !Number.isFinite(value)) return "-";
+  if (metric === "ttft_ms") return `${(value / 1000).toFixed(2)}s`;
+  return `${value.toFixed(2)} tps`;
 }
 
 function parseIso(raw: string | null): Date | null {
-  if (!raw) return null
-  const parsed = new Date(raw)
-  if (Number.isNaN(parsed.getTime())) return null
-  return parsed
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
 }
 
 function formatUtcTime(raw: string | null): string {
-  const parsed = parseIso(raw)
-  if (!parsed) return "n/a"
-  return parsed.toLocaleTimeString([], { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false })
+  const parsed = parseIso(raw);
+  if (!parsed) return "n/a";
+  return parsed.toLocaleTimeString([], { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 function formatUtcDate(raw: string | null): string {
-  const parsed = parseIso(raw)
-  if (!parsed) return "n/a"
-  return parsed.toLocaleDateString([], { timeZone: "UTC", month: "short", day: "2-digit" })
+  const parsed = parseIso(raw);
+  if (!parsed) return "n/a";
+  return parsed.toLocaleDateString([], { timeZone: "UTC", month: "short", day: "2-digit" });
 }
 
-type SeriesKey = "glm47_coding" | "glm47_standard" | "glm5_coding" | "glm5_standard"
-
 type ChartDataPoint = {
-  timestamp: string
-} & Record<SeriesKey, number | null>
+  timestamp: string;
+} & Record<SeriesKey, number | null>;
 
-const ALL_SERIES_KEYS: SeriesKey[] = [
-  "glm47_coding",
-  "glm47_standard",
-  "glm5_coding",
-  "glm5_standard",
-]
+const ALL_SERIES_KEYS: SeriesKey[] = ["glm47", "glm47flash", "glm5"];
 
-function getSeriesKey(model: ModelKey, apiType: "coding" | "standard"): SeriesKey {
-  const modelPrefix = model === "glm-4.7" ? "glm47" : "glm5"
-  return `${modelPrefix}_${apiType}` as SeriesKey
+function getSeriesKey(model: ModelKey): SeriesKey {
+  if (model === "glm-4.7") return "glm47";
+  if (model === "glm-4.7-flash") return "glm47flash";
+  return "glm5";
 }
 
 function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false)
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(max-width: 640px)").matches : false,
+  );
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 640px)")
-    setIsMobile(mq.matches)
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
-    mq.addEventListener("change", handler)
-    return () => mq.removeEventListener("change", handler)
-  }, [])
+    const mq = window.matchMedia("(max-width: 640px)");
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
-  return isMobile
+  return isMobile;
 }
 
-export function OverviewTrend({
-  hours,
-  trendByModel,
-  comparisonTrendByModel,
-  windowStart,
-  windowEnd,
-}: OverviewTrendProps) {
-  const [metric, setMetric] = useState<TrendMetricKey>("output_tps")
-  const [activeSeries, setActiveSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES_KEYS))
-  const isMobile = useIsMobile()
+export function OverviewTrend({ trendByModel, windowStart, windowEnd }: OverviewTrendProps) {
+  const [metric, setMetric] = useState<TrendMetricKey>("output_tps");
+  const [activeSeries, setActiveSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES_KEYS));
+  const isMobile = useIsMobile();
 
   const { chartData, chartConfig, hasData, seriesStats } = useMemo(() => {
-    const start = parseIso(windowStart)
-    const end = parseIso(windowEnd)
-    
+    const start = parseIso(windowStart);
+    const end = parseIso(windowEnd);
+
     const emptyStats: Record<SeriesKey, { min: number | null; max: number | null; latest: number | null }> = {
-      glm47_coding: { min: null, max: null, latest: null },
-      glm47_standard: { min: null, max: null, latest: null },
-      glm5_coding: { min: null, max: null, latest: null },
-      glm5_standard: { min: null, max: null, latest: null },
-    }
-    
+      glm47: { min: null, max: null, latest: null },
+      glm47flash: { min: null, max: null, latest: null },
+      glm5: { min: null, max: null, latest: null },
+    };
+
     if (!start || !end || end <= start) {
-      return { chartData: [], chartConfig: {}, hasData: false, seriesStats: emptyStats }
+      return { chartData: [], chartConfig: {}, hasData: false, seriesStats: emptyStats };
     }
 
-    // Collect all unique timestamps
-    const allTimestamps = new Set<string>()
-    
+    const allTimestamps = new Set<string>();
+
     for (const model of MODELS) {
-      const codingTrend = trendByModel[model] || []
-      const standardTrend = comparisonTrendByModel[model] || []
-      
-      codingTrend.forEach((p: TrendPoint) => allTimestamps.add(p.timestamp))
-      standardTrend.forEach((p: TrendPoint) => allTimestamps.add(p.timestamp))
+      const modelTrend = trendByModel[model] || [];
+      modelTrend.forEach((p: TrendPoint) => allTimestamps.add(p.timestamp));
     }
 
-    // Sort timestamps
-    const sortedTimestamps = Array.from(allTimestamps).sort()
+    const sortedTimestamps = Array.from(allTimestamps).sort();
 
-    // Build chart data
     const data: ChartDataPoint[] = sortedTimestamps.map((timestamp) => {
-      const point: Partial<ChartDataPoint> = { timestamp }
+      const point: Partial<ChartDataPoint> = { timestamp };
 
       for (const model of MODELS) {
-        const codingTrend = trendByModel[model] || []
-        const standardTrend = comparisonTrendByModel[model] || []
+        const modelTrend = trendByModel[model] || [];
+        const trendPoint = modelTrend.find((p: TrendPoint) => p.timestamp === timestamp);
 
-        const codingPoint = codingTrend.find((p: TrendPoint) => p.timestamp === timestamp)
-        const standardPoint = standardTrend.find((p: TrendPoint) => p.timestamp === timestamp)
-
-        const codingKey = getSeriesKey(model, "coding")
-        const standardKey = getSeriesKey(model, "standard")
-
-        const codingRaw = codingPoint?.[metric]
-        const standardRaw = standardPoint?.[metric]
-
-        point[codingKey] = typeof codingRaw === "number" && Number.isFinite(codingRaw) ? codingRaw : null
-        point[standardKey] = typeof standardRaw === "number" && Number.isFinite(standardRaw) ? standardRaw : null
+        const seriesKey = getSeriesKey(model);
+        const raw = trendPoint?.[metric];
+        point[seriesKey] = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
       }
 
-      return point as ChartDataPoint
-    })
+      return point as ChartDataPoint;
+    });
 
-    // Build chart config
-    const config: ChartConfig = {}
+    const config: ChartConfig = {};
     const stats: Record<SeriesKey, { min: number | null; max: number | null; latest: number | null }> = {
-      glm47_coding: { min: null, max: null, latest: null },
-      glm47_standard: { min: null, max: null, latest: null },
-      glm5_coding: { min: null, max: null, latest: null },
-      glm5_standard: { min: null, max: null, latest: null },
-    }
+      glm47: { min: null, max: null, latest: null },
+      glm47flash: { min: null, max: null, latest: null },
+      glm5: { min: null, max: null, latest: null },
+    };
 
     for (const model of MODELS) {
-      const codingKey = getSeriesKey(model, "coding")
-      const standardKey = getSeriesKey(model, "standard")
-      const color = MODEL_COLORS[model]
+      const seriesKey = getSeriesKey(model);
+      const color = MODEL_COLORS[model];
 
-      config[codingKey] = {
-        label: `${MODEL_LABELS[model]} Coding`,
+      config[seriesKey] = {
+        label: MODEL_LABELS[model],
         color,
-      }
-      config[standardKey] = {
-        label: `${MODEL_LABELS[model]} Standard`,
-        color,
-      }
+      };
 
-      // Calculate stats
-      const codingValues = data.map((d) => d[codingKey]).filter((v): v is number => v !== null)
-      const standardValues = data.map((d) => d[standardKey]).filter((v): v is number => v !== null)
-
-      stats[codingKey] = {
-        min: codingValues.length > 0 ? Math.min(...codingValues) : null,
-        max: codingValues.length > 0 ? Math.max(...codingValues) : null,
-        latest: codingValues.length > 0 ? codingValues[codingValues.length - 1] : null,
-      }
-      stats[standardKey] = {
-        min: standardValues.length > 0 ? Math.min(...standardValues) : null,
-        max: standardValues.length > 0 ? Math.max(...standardValues) : null,
-        latest: standardValues.length > 0 ? standardValues[standardValues.length - 1] : null,
-      }
+      const values = data.map((d) => d[seriesKey]).filter((v): v is number => v !== null);
+      stats[seriesKey] = {
+        min: values.length > 0 ? Math.min(...values) : null,
+        max: values.length > 0 ? Math.max(...values) : null,
+        latest: values.length > 0 ? values[values.length - 1] : null,
+      };
     }
 
-    const hasAnyData = data.some((d) => 
+    const hasAnyData = data.some((d) =>
       MODELS.some((model) => {
-        const codingKey = getSeriesKey(model, "coding")
-        const standardKey = getSeriesKey(model, "standard")
-        return d[codingKey] !== null || d[standardKey] !== null
-      })
-    )
+        const seriesKey = getSeriesKey(model);
+        return d[seriesKey] !== null;
+      }),
+    );
 
-    return { chartData: data, chartConfig: config, hasData: hasAnyData, seriesStats: stats }
-  }, [comparisonTrendByModel, metric, trendByModel, windowEnd, windowStart])
+    return { chartData: data, chartConfig: config, hasData: hasAnyData, seriesStats: stats };
+  }, [metric, trendByModel, windowEnd, windowStart]);
 
   const toggleSeries = (seriesKey: SeriesKey) => {
     setActiveSeries((prev) => {
-      const next = new Set(prev)
+      const next = new Set(prev);
       if (next.has(seriesKey)) {
-        next.delete(seriesKey)
+        next.delete(seriesKey);
       } else {
-        next.add(seriesKey)
+        next.add(seriesKey);
       }
-      return next
-    })
-  }
+      return next;
+    });
+  };
 
-  const activeMetric = METRIC_OPTIONS.find((o) => o.key === metric) ?? METRIC_OPTIONS[0]
+  const activeMetric = METRIC_OPTIONS.find((o) => o.key === metric) ?? METRIC_OPTIONS[0];
 
   return (
     <article className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
@@ -232,7 +192,7 @@ export function OverviewTrend({
 
       <div className="mb-3 flex flex-wrap gap-2">
         {METRIC_OPTIONS.map((option) => {
-          const selected = option.key === metric
+          const selected = option.key === metric;
           return (
             <button
               key={option.key}
@@ -246,7 +206,7 @@ export function OverviewTrend({
             >
               {option.label}
             </button>
-          )
+          );
         })}
       </div>
 
@@ -272,13 +232,13 @@ export function OverviewTrend({
                   minTickGap={isMobile ? 24 : 32}
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                   tickFormatter={(value) => {
-                    const date = new Date(value)
+                    const date = new Date(value);
                     return date.toLocaleTimeString([], {
                       timeZone: "UTC",
                       hour: "2-digit",
                       minute: "2-digit",
                       hour12: false,
-                    })
+                    });
                   }}
                 />
                 <YAxis
@@ -288,8 +248,8 @@ export function OverviewTrend({
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                   width={isMobile ? 32 : 45}
                   tickFormatter={(value) => {
-                    if (metric === "ttft_ms") return `${(value / 1000).toFixed(1)}s`
-                    return value.toFixed(1)
+                    if (metric === "ttft_ms") return `${(value / 1000).toFixed(1)}s`;
+                    return value.toFixed(1);
                   }}
                 />
                 <ChartTooltip
@@ -298,7 +258,7 @@ export function OverviewTrend({
                       indicator="line"
                       className="rounded-lg border-[color:var(--border)] bg-[color:var(--popover)] shadow-lg"
                       labelFormatter={(value) => {
-                        const date = new Date(value as string)
+                        const date = new Date(value as string);
                         return (
                           <span className="font-medium text-[color:var(--card-foreground)]">
                             {date.toLocaleString([], {
@@ -308,13 +268,14 @@ export function OverviewTrend({
                               hour: "2-digit",
                               minute: "2-digit",
                               hour12: false,
-                            })} UTC
+                            })}{" "}
+                            UTC
                           </span>
-                        )
+                        );
                       }}
-                      formatter={(value, name, item) => {
-                        const configKey = name as SeriesKey
-                        const label = chartConfig[configKey]?.label || name
+                      formatter={(value, name) => {
+                        const configKey = name as SeriesKey;
+                        const label = chartConfig[configKey]?.label || name;
                         return (
                           <div className="flex items-center justify-between gap-6">
                             <span className="text-[color:var(--muted-foreground)]">{label}</span>
@@ -322,52 +283,39 @@ export function OverviewTrend({
                               {formatMetricValue(metric, value as number | null)}
                             </span>
                           </div>
-                        )
+                        );
                       }}
                     />
                   }
                 />
-                {activeSeries.has("glm47_coding") && (
+                {activeSeries.has("glm47") && (
                   <Line
-                    dataKey="glm47_coding"
+                    dataKey="glm47"
                     type="monotone"
-                    stroke="var(--color-glm47_coding)"
+                    stroke="var(--color-glm47)"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls
                   />
                 )}
-                {activeSeries.has("glm47_standard") && (
+                {activeSeries.has("glm47flash") && (
                   <Line
-                    dataKey="glm47_standard"
+                    dataKey="glm47flash"
                     type="monotone"
-                    stroke="var(--color-glm47_standard)"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                    activeDot={{ r: 5 }}
-                    connectNulls
-                  />
-                )}
-                {activeSeries.has("glm5_coding") && (
-                  <Line
-                    dataKey="glm5_coding"
-                    type="monotone"
-                    stroke="var(--color-glm5_coding)"
+                    stroke="var(--color-glm47flash)"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls
                   />
                 )}
-                {activeSeries.has("glm5_standard") && (
+                {activeSeries.has("glm5") && (
                   <Line
-                    dataKey="glm5_standard"
+                    dataKey="glm5"
                     type="monotone"
-                    stroke="var(--color-glm5_standard)"
+                    stroke="var(--color-glm5)"
                     strokeWidth={2}
-                    strokeDasharray="5 5"
                     dot={false}
                     activeDot={{ r: 5 }}
                     connectNulls
@@ -376,42 +324,22 @@ export function OverviewTrend({
               </LineChart>
             </ChartContainer>
 
-            {/* Legend with toggle buttons */}
             <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
-              {MODELS.map((model) => (
-                <div key={model} className="flex items-center gap-2">
-                  {/* Coding series */}
+              {MODELS.map((model) => {
+                const seriesKey = getSeriesKey(model);
+                return (
                   <button
-                    onClick={() => toggleSeries(getSeriesKey(model, "coding"))}
+                    key={model}
+                    onClick={() => toggleSeries(seriesKey)}
                     className={`flex items-center gap-1.5 transition ${
-                      activeSeries.has(getSeriesKey(model, "coding")) ? "opacity-100" : "opacity-40"
+                      activeSeries.has(seriesKey) ? "opacity-100" : "opacity-40"
                     }`}
                   >
-                    <span
-                      className="h-2 w-3 rounded-full"
-                      style={{ backgroundColor: MODEL_COLORS[model] }}
-                    />
-                    <span className="font-medium text-[color:var(--card-foreground)]">
-                      {MODEL_LABELS[model]}
-                    </span>
+                    <span className="h-2 w-3 rounded-full" style={{ backgroundColor: MODEL_COLORS[model] }} />
+                    <span className="font-medium text-[color:var(--card-foreground)]">{MODEL_LABELS[model]}</span>
                   </button>
-                  {/* Standard series */}
-                  <button
-                    onClick={() => toggleSeries(getSeriesKey(model, "standard"))}
-                    className={`flex items-center gap-1.5 transition ${
-                      activeSeries.has(getSeriesKey(model, "standard")) ? "opacity-100" : "opacity-40"
-                    }`}
-                  >
-                    <span
-                      className="h-0.5 w-3 border-b-2 border-dashed"
-                      style={{ borderColor: MODEL_COLORS[model] }}
-                    />
-                    <span className="text-[color:var(--muted-foreground)]">
-                      {MODEL_LABELS[model]} Std
-                    </span>
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="mt-2 flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">
@@ -427,55 +355,34 @@ export function OverviewTrend({
       </div>
 
       {hasData && Object.keys(seriesStats).length > 0 && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {MODELS.map((model) => {
-            const codingKey: SeriesKey = getSeriesKey(model, "coding")
-            const standardKey: SeriesKey = getSeriesKey(model, "standard")
-            const codingStats = seriesStats[codingKey]
-            const standardStats = seriesStats[standardKey]
+            const seriesKey = getSeriesKey(model);
+            const stats = seriesStats[seriesKey];
+            if (!stats || !activeSeries.has(seriesKey)) return null;
 
-            return [
-              { key: codingKey, stats: codingStats, label: "Coding", model, isCoding: true },
-              { key: standardKey, stats: standardStats, label: "Standard", model, isCoding: false },
-            ].map(({ key, stats, label, isCoding }) => {
-              if (!stats || !activeSeries.has(key)) return null
-
-              return (
-                <div
-                  key={key}
-                  className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 p-3"
-                >
-                  <div className="flex items-center gap-2">
-                    {isCoding ? (
-                      <span
-                        className="h-2 w-3 rounded-full"
-                        style={{ backgroundColor: MODEL_COLORS[model] }}
-                      />
-                    ) : (
-                      <span
-                        className="h-0.5 w-3 border-b-2 border-dashed"
-                        style={{ borderColor: MODEL_COLORS[model] }}
-                      />
-                    )}
-                    <span className="font-mono text-xs font-medium text-[color:var(--card-foreground)]">
-                      {MODEL_LABELS[model]}
-                    </span>
-                    <span className="font-mono text-[10px] text-[color:var(--muted-foreground)] ml-1">
-                      {label}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm text-[color:var(--card-foreground)]">
-                    Latest: <span className="font-mono font-medium">{formatMetricValue(metric, stats.latest)}</span>
-                  </p>
-                  <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                    Range: {formatMetricValue(metric, stats.min)} – {formatMetricValue(metric, stats.max)}
-                  </p>
+            return (
+              <div
+                key={seriesKey}
+                className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-3 rounded-full" style={{ backgroundColor: MODEL_COLORS[model] }} />
+                  <span className="font-mono text-xs font-medium text-[color:var(--card-foreground)]">
+                    {MODEL_LABELS[model]}
+                  </span>
                 </div>
-              )
-            })
+                <p className="mt-2 text-sm text-[color:var(--card-foreground)]">
+                  Latest: <span className="font-mono font-medium">{formatMetricValue(metric, stats.latest)}</span>
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                  Range: {formatMetricValue(metric, stats.min)} - {formatMetricValue(metric, stats.max)}
+                </p>
+              </div>
+            );
           })}
         </div>
       )}
     </article>
-  )
+  );
 }
