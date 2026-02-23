@@ -76,11 +76,7 @@ PROMPT_SUITE = [
         "  ]\n"
         "}\n\n"
         "Treat status >= 400 as errors. Show calculations briefly."
-    ),
-    (
-        "Provide a concise pull request reliability checklist with exactly 8 bullet points, "
-        "focused on error handling, retries, timeouts, observability, and rollback safety."
-    ),
+    )
 ]
 
 METRICS_VERSION = 4

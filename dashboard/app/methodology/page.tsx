@@ -11,8 +11,8 @@ export default function MethodologyPage() {
           Methodology
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-[color:var(--muted-foreground)] md:text-base">
-          Short version: each benchmark workflow runs both models sequentially under the same settings, then compares
-          results over the same time window.
+          Short version: the Coding Plan workflow runs monitored models sequentially under the same settings and tracks
+          directional performance over matching time windows.
         </p>
       </header>
 
@@ -20,11 +20,10 @@ export default function MethodologyPage() {
         <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">How Measurements Are Taken</h2>
         <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-[color:var(--muted-foreground)]">
           <li>
-            The Coding Plan and Standard API workflows are triggered on their own schedules, and each workflow runs
-            both models sequentially.
+            The Coding Plan workflow is triggered on schedule and runs all monitored models sequentially.
           </li>
           <li>
-            Each side uses a separate API key, but the same prompt shape, model selection, and runtime settings.
+            Runs use the same prompt shape and runtime settings for each model.
           </li>
           <li>
             Requests use streamed chat completions, and we timestamp header arrival, first SSE event, first token, and
@@ -36,17 +35,16 @@ export default function MethodologyPage() {
           </li>
         </ul>
         <p className="mt-4 rounded-xl border border-[color:var(--border)] bg-[color:var(--paper)]/55 px-4 py-3 text-xs text-[color:var(--muted-foreground)]">
-          Sampling cadence: Coding Plan is collected hourly, while Standard API is collected every 2 hours to reduce
-          paid API usage.
+          Sampling cadence: data is collected hourly.
         </p>
       </section>
 
       <section className="paper-panel paper-noise fade-up fade-up-delay-2 rounded-3xl p-6 md:p-8">
         <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Prompt Suite</h2>
         <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-          The monitor uses three prompt types to avoid overfitting to one response style.
+          The monitor uses two prompt types to avoid overfitting to one response style.
         </p>
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
           <article className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/60 p-4">
             <p className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">Prompt 1</p>
             <h3 className="mt-1 text-base text-[color:var(--card-foreground)]">Code Generation + Tests</h3>
@@ -59,13 +57,6 @@ export default function MethodologyPage() {
             <h3 className="mt-1 text-base text-[color:var(--card-foreground)]">JSON Analysis</h3>
             <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
               Structured metrics from sample request logs, including error handling and brief calculations.
-            </p>
-          </article>
-          <article className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/60 p-4">
-            <p className="text-xs font-medium tracking-[0.12em] text-[color:var(--muted-foreground)] uppercase">Prompt 3</p>
-            <h3 className="mt-1 text-base text-[color:var(--card-foreground)]">Concise Checklist</h3>
-            <p className="mt-2 text-xs leading-relaxed text-[color:var(--muted-foreground)]">
-              Exactly 8 bullets focused on reliability topics like retries, timeouts, observability, and rollback.
             </p>
           </article>
         </div>
