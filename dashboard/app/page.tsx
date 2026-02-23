@@ -46,7 +46,7 @@ export default function Home() {
   const trendWindowEnd = data?.window.end ?? null;
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-5 py-6 md:px-10 md:py-10">
+    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-5 py-7 md:px-10 md:py-10">
       <OverviewHeader
         latestDocumentTimestamp={latestDocumentTimestamp}
         hours={hours}
@@ -74,7 +74,7 @@ export default function Home() {
       <div className="fade-up fade-up-delay-3">
         <Link
           href="/methodology"
-          className="inline-flex h-10 items-center justify-center rounded-lg border-2 border-[color:var(--card-foreground)]/22 bg-[color:var(--paper)]/65 px-3 text-sm leading-none font-semibold text-[color:var(--muted-foreground)] transition hover:bg-[color:var(--accent-sky)]/35 sm:h-8"
+          className="quiet-link inline-flex h-9 items-center justify-center rounded-lg px-3 text-sm leading-none font-semibold text-[color:var(--muted-foreground)] transition sm:h-8"
         >
           Methodology
         </Link>
