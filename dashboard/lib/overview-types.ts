@@ -20,14 +20,14 @@ export type ModelMetrics = {
 export type OverviewResponse = {
   window: {
     hours: number;
-    start: string;
-    end: string;
+    start: string | null;
+    end: string | null;
   };
   metrics_by_model: Record<string, ModelMetrics>;
   trend_by_model: TrendByModel;
   errors: Array<{ type: string; count: number }>;
   models: string[];
-  endpoint_family: string;
+  endpoint_family: "coding_plan";
   latest_document_timestamp: string | null;
   generated_at: string | null;
 };

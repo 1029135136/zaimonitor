@@ -8,7 +8,6 @@ Required env vars:
 - MONGODB_URI
 
 Optional env vars:
-- ZAI_ENDPOINT_FAMILY (coding_plan|official_api; inferred from ZAI_BASE_URL when omitted)
 - ZAI_PROVIDER (default: z.ai)
 - MONGO_DB (default: zaimonitor)
 - MONGO_COLLECTION (default: inference_runs)
@@ -86,11 +85,7 @@ PROMPT_SUITE = [
 
 METRICS_VERSION = 4
 ENDPOINT_FAMILY_CODING_PLAN = "coding_plan"
-ENDPOINT_FAMILY_OFFICIAL_API = "official_api"
-ENDPOINT_FAMILY_VALUES = {
-    ENDPOINT_FAMILY_CODING_PLAN,
-    ENDPOINT_FAMILY_OFFICIAL_API,
-}
+ENDPOINT_FAMILY_VALUES = {ENDPOINT_FAMILY_CODING_PLAN}
 
 
 @dataclass
@@ -115,11 +110,6 @@ class ConfigError(Exception):
 
 
 def infer_endpoint_family(zai_base_url: str) -> str:
-    normalized = zai_base_url.rstrip("/").lower()
-    if "/api/coding/paas/v4" in normalized:
-        return ENDPOINT_FAMILY_CODING_PLAN
-    if "/api/paas/v4" in normalized:
-        return ENDPOINT_FAMILY_OFFICIAL_API
     return ENDPOINT_FAMILY_CODING_PLAN
 
 

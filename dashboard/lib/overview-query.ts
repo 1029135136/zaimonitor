@@ -1,11 +1,7 @@
 import { MongoClient, Collection, Document } from "mongodb";
 
 const ENDPOINT_FAMILY_CODING_PLAN = "coding_plan";
-const ENDPOINT_FAMILY_OFFICIAL_API = "official_api";
-const ENDPOINT_FAMILIES = [ENDPOINT_FAMILY_CODING_PLAN, ENDPOINT_FAMILY_OFFICIAL_API];
-const KNOWN_MODELS = ["glm-4.7", "glm-5"] as const;
-const MIN_STABLE_GENERATION_WINDOW_MS = 500.0;
-const MAX_REASONABLE_TPS = 1000.0;
+const KNOWN_MODELS = ["glm-4.7-flash", "glm-4.7", "glm-5"] as const;
 
 interface Metrics {
   ttft_ms?: number;
@@ -51,8 +47,6 @@ interface RunTrendPoint {
   output_tps?: number;
   ttft_ms?: number;
 }
-
-type EndpointFamily = typeof ENDPOINT_FAMILY_CODING_PLAN | typeof ENDPOINT_FAMILY_OFFICIAL_API;
 
 type MongoClientCache = {
   clients: Map<string, Promise<MongoClient>>;
@@ -105,54 +99,18 @@ function toIso(value: Date | null | undefined): string | null {
   return date.toISOString();
 }
 
-function normalizeEndpointFamily(raw: string): string {
-  const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
-  if (ENDPOINT_FAMILIES.includes(normalized)) return normalized;
-  throw new Error(`endpoint family must be one of: ${ENDPOINT_FAMILIES.join(", ")}`);
-}
-
-function buildEndpointFamilyMatch(endpointFamily: string): Document {
-  if (endpointFamily === ENDPOINT_FAMILY_CODING_PLAN) {
-    return {
-      $or: [
-        { endpoint_family: ENDPOINT_FAMILY_CODING_PLAN },
-        {
-          $and: [
-            { endpoint_family: { $exists: false } },
-            { endpoint_base: { $regex: /\/api\/coding\/paas\/v4\/?$/i } },
-          ],
-        },
-      ],
-    };
-  }
-
+function buildEndpointFamilyMatch(): Document {
   return {
     $or: [
-      { endpoint_family: ENDPOINT_FAMILY_OFFICIAL_API },
+      { endpoint_family: ENDPOINT_FAMILY_CODING_PLAN },
       {
         $and: [
           { endpoint_family: { $exists: false } },
-          { endpoint_base: { $regex: /\/api\/paas\/v4\/?$/i } },
+          { endpoint_base: { $regex: /\/api\/coding\/paas\/v4\/?$/i } },
         ],
       },
     ],
   };
-}
-
-function extractStableTps(doc: InferenceDoc, key: keyof Metrics): number | null {
-  const metrics = doc.metrics || {};
-  const rawValue = metrics[key];
-  const rawGenerationWindowMs = metrics.generation_window_ms;
-
-  if (rawValue === undefined || rawGenerationWindowMs === undefined) return null;
-
-  const generationWindowMs = Number(rawGenerationWindowMs);
-  if (isNaN(generationWindowMs) || generationWindowMs < MIN_STABLE_GENERATION_WINDOW_MS) return null;
-
-  const value = Number(rawValue);
-  if (isNaN(value) || value < 0 || value > MAX_REASONABLE_TPS) return null;
-
-  return value;
 }
 
 function extractOutputTpsPostTtft(doc: InferenceDoc): number | null {
@@ -184,6 +142,13 @@ function extractOutputTpsPostTtft(doc: InferenceDoc): number | null {
 function normalizeModel(model: string | undefined): string {
   if (!model || typeof model !== "string") return "unknown";
   const trimmed = model.trim().toLowerCase();
+  if (
+    trimmed.includes("glm-4.7-flash")
+    || trimmed.includes("glm47-flash")
+    || trimmed.includes("glm47flash")
+  ) {
+    return "glm-4.7-flash";
+  }
   if (trimmed.includes("glm-5") || trimmed === "glm5") return "glm-5";
   if (trimmed.includes("glm-4.7") || trimmed.includes("glm47")) return "glm-4.7";
   return trimmed || "unknown";
@@ -254,7 +219,6 @@ function collectMetricValues(docs: InferenceDoc[], key: keyof Metrics): number[]
 
 export interface OverviewQueryParams {
   hours: number;
-  endpointFamily: EndpointFamily;
 }
 
 export interface ModelMetrics {
@@ -282,14 +246,8 @@ export interface OverviewResult {
   }>>;
   errors: Array<{ type: string; count: number }>;
   models: string[];
-  endpoint_family: string;
+  endpoint_family: typeof ENDPOINT_FAMILY_CODING_PLAN;
   latest_document_timestamp: string | null;
-  generated_at: string | null;
-}
-
-export interface OverviewPairResult {
-  coding_plan: OverviewResult;
-  official_api: OverviewResult;
   generated_at: string | null;
 }
 
@@ -297,8 +255,6 @@ export async function queryOverview(
   mongoUri: string,
   params: OverviewQueryParams,
 ): Promise<OverviewResult> {
-  const endpointFamily = normalizeEndpointFamily(params.endpointFamily) as EndpointFamily;
-
   const dbName = process.env.MONGO_DB || "zaimonitor";
   const collectionName = process.env.MONGO_COLLECTION || "inference_runs";
 
@@ -311,7 +267,7 @@ export async function queryOverview(
   const db = client.db(dbName);
   const collection: Collection<InferenceDoc> = db.collection(collectionName);
 
-  const scopeFilter = buildEndpointFamilyMatch(endpointFamily);
+  const scopeFilter = buildEndpointFamilyMatch();
 
   const latestDoc = await collection
     .findOne(scopeFilter, { projection: { _id: 0, timestamp: 1 }, sort: { timestamp: -1 } })
@@ -500,24 +456,8 @@ export async function queryOverview(
     trend_by_model: trendByModel,
     errors: Array.from(errorBreakdown.entries()).map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
     models,
-    endpoint_family: endpointFamily,
+    endpoint_family: ENDPOINT_FAMILY_CODING_PLAN,
     latest_document_timestamp: toIso(latestTs instanceof Date ? latestTs : null),
-    generated_at: toIso(new Date()),
-  };
-}
-
-export async function queryOverviewPair(
-  mongoUri: string,
-  params: Omit<OverviewQueryParams, "endpointFamily">,
-): Promise<OverviewPairResult> {
-  const [codingPlan, officialApi] = await Promise.all([
-    queryOverview(mongoUri, { ...params, endpointFamily: ENDPOINT_FAMILY_CODING_PLAN }),
-    queryOverview(mongoUri, { ...params, endpointFamily: ENDPOINT_FAMILY_OFFICIAL_API }),
-  ]);
-
-  return {
-    coding_plan: codingPlan,
-    official_api: officialApi,
     generated_at: toIso(new Date()),
   };
 }

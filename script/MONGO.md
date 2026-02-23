@@ -12,7 +12,7 @@
   "run_id": "UUID shared by all prompts in one benchmark run",
   "endpoint_family": "coding_plan",
   "endpoint_base": "https://api.z.ai/api/coding/paas/v4",
-  "model": "glm-5",
+  "model": "glm-4.7-flash",
   "ok": true,
   "metrics": {
     "first_sse_event_ms": 700,
@@ -44,7 +44,7 @@
 |-------|------|-------|
 | `metrics_version` | int | Metric semantics version (`4` = TTFT is first any token + explicit answer-completion metrics) |
 | `run_id` | string | Shared ID across all prompts from one script execution (used for run-level trend points) |
-| `endpoint_family` | string | Endpoint grouping used for dashboard split (`coding_plan` or `official_api`) |
+| `endpoint_family` | string | Endpoint grouping used for dashboard split (`coding_plan`) |
 | `endpoint_base` | string | Concrete base URL used for this request family |
 | `ok` | boolean | Success (true) or failure (false) |
 | `metrics.first_sse_event_ms` | float | Time to first streamed SSE `data:` event (can be before visible text) |
@@ -103,11 +103,6 @@ db.inference_runs.aggregate([
 **Coding Plan endpoint only**
 ```javascript
 db.inference_runs.find({ endpoint_family: "coding_plan" }).sort({ timestamp: -1 }).limit(20)
-```
-
-**Official API endpoint only**
-```javascript
-db.inference_runs.find({ endpoint_family: "official_api" }).sort({ timestamp: -1 }).limit(20)
 ```
 
 **Error breakdown**
