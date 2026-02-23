@@ -10,7 +10,6 @@ import type { OverviewResponse } from "@/lib/overview-types";
 export default function Home() {
   const [hours, setHours] = useState("24");
   const [data, setData] = useState<OverviewResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -18,7 +17,6 @@ export default function Home() {
 
     const load = async () => {
       try {
-        setLoading(true);
         setError(null);
 
         const response = await fetch(`/api/overview?${new URLSearchParams({ hours }).toString()}`, { cache: "no-store" });
@@ -32,8 +30,6 @@ export default function Home() {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to load overview");
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     };
 
@@ -63,6 +59,7 @@ export default function Home() {
 
       <OverviewTrend
         trendByModel={data?.trend_by_model ?? {}}
+        failureByModel={data?.failure_by_model ?? {}}
         windowStart={trendWindowStart}
         windowEnd={trendWindowEnd}
       />

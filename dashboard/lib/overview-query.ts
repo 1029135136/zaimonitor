@@ -5,11 +5,8 @@ const KNOWN_MODELS = ["glm-4.7-flash", "glm-4.7", "glm-5"] as const;
 
 interface Metrics {
   ttft_ms?: number;
-  provider_output_tokens_per_second?: number;
   provider_output_tokens_per_second_end_to_end?: number;
   output_tokens_per_second_post_ttft?: number;
-  visible_output_tokens_per_second?: number;
-  generation_window_ms?: number;
   total_latency_ms?: number;
 }
 
@@ -23,12 +20,9 @@ interface ErrorDoc {
 
 interface InferenceDoc extends Document {
   timestamp: Date;
-  metrics_version?: number;
   run_id?: string;
   ok: boolean;
   model?: string;
-  endpoint_family?: string;
-  endpoint_base?: string;
   metrics?: Metrics;
   tokens?: Tokens;
   error?: ErrorDoc;
@@ -244,6 +238,7 @@ export interface OverviewResult {
     output_tps?: number;
     ttft_ms?: number;
   }>>;
+  failure_by_model: Record<string, Array<{ timestamp: string }>>;
   errors: Array<{ type: string; count: number }>;
   models: string[];
   endpoint_family: typeof ENDPOINT_FAMILY_CODING_PLAN;
@@ -292,16 +287,12 @@ export async function queryOverview(
   const projection = {
     _id: 0,
     timestamp: 1,
-    metrics_version: 1,
     run_id: 1,
     ok: 1,
     model: 1,
-    endpoint_family: 1,
-    endpoint_base: 1,
     "metrics.ttft_ms": 1,
     "metrics.provider_output_tokens_per_second_end_to_end": 1,
     "metrics.output_tokens_per_second_post_ttft": 1,
-    "metrics.generation_window_ms": 1,
     "metrics.total_latency_ms": 1,
     "tokens.completion_tokens": 1,
     "error.type": 1,
@@ -403,11 +394,29 @@ export async function queryOverview(
     modelBuckets.set(bucketKey, existing);
   }
 
+  const failureBucketsByModel = new Map<string, Set<string>>();
+  for (const doc of trendDocs) {
+    if (doc.ok) continue;
+    const ts = doc.timestamp;
+    if (!(ts instanceof Date) || isNaN(ts.getTime())) continue;
+
+    const model = normalizeModel(doc.model);
+    const bucket = new Date(
+      Date.UTC(ts.getUTCFullYear(), ts.getUTCMonth(), ts.getUTCDate(), ts.getUTCHours(), 0, 0, 0),
+    );
+    const bucketKey = bucket.toISOString();
+
+    if (!failureBucketsByModel.has(model)) failureBucketsByModel.set(model, new Set());
+    const modelFailureBuckets = failureBucketsByModel.get(model)!;
+    modelFailureBuckets.add(bucketKey);
+  }
+
   const bucketSizeMs = 60 * 60 * 1000;
   const firstBucketMs = Math.floor(trendWindowStart.getTime() / bucketSizeMs) * bucketSizeMs;
   const lastBucketMs = Math.floor(trendWindowEnd.getTime() / bucketSizeMs) * bucketSizeMs;
 
   const trendByModel: Record<string, Array<{ timestamp: string; output_tps?: number; ttft_ms?: number }>> = {};
+  const failureByModel: Record<string, Array<{ timestamp: string }>> = {};
 
   for (const [model, modelBuckets] of bucketsByModel) {
     const modelTrend: Array<{ timestamp: string; output_tps?: number; ttft_ms?: number }> = [];
@@ -427,6 +436,15 @@ export async function queryOverview(
     }
 
     trendByModel[model] = modelTrend;
+
+    const modelFailures = failureBucketsByModel.get(model);
+    if (modelFailures) {
+      failureByModel[model] = Array.from(modelFailures.values())
+        .sort((a, b) => a.localeCompare(b))
+        .map((timestamp) => ({ timestamp }));
+    } else {
+      failureByModel[model] = [];
+    }
   }
 
   for (const knownModel of KNOWN_MODELS) {
@@ -438,6 +456,9 @@ export async function queryOverview(
         bucketCursor = new Date(bucketCursor.getTime() + bucketSizeMs);
       }
       trendByModel[knownModel] = emptyTrend;
+    }
+    if (!failureByModel[knownModel]) {
+      failureByModel[knownModel] = [];
     }
   }
 
@@ -454,6 +475,7 @@ export async function queryOverview(
     window: { hours: requestedHours, start: toIso(trendWindowStart), end: toIso(trendWindowEnd) },
     metrics_by_model: metricsByModel,
     trend_by_model: trendByModel,
+    failure_by_model: failureByModel,
     errors: Array.from(errorBreakdown.entries()).map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count),
     models,
     endpoint_family: ENDPOINT_FAMILY_CODING_PLAN,

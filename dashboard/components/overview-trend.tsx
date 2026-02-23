@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
-import type { TrendByModel, TrendPoint } from "@/lib/overview-types";
+import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
+import type { FailureByModel, TrendByModel, TrendPoint } from "@/lib/overview-types";
 import {
   ChartContainer,
   ChartTooltip,
@@ -14,6 +14,7 @@ type TrendMetricKey = "output_tps" | "ttft_ms";
 
 type OverviewTrendProps = {
   trendByModel: TrendByModel;
+  failureByModel: FailureByModel;
   windowStart: string | null;
   windowEnd: string | null;
 };
@@ -92,12 +93,39 @@ function useIsMobile() {
   return isMobile;
 }
 
-export function OverviewTrend({ trendByModel, windowStart, windowEnd }: OverviewTrendProps) {
+function FailureX({ cx, cy, size = 8 }: { cx?: number; cy?: number; size?: number }) {
+  if (typeof cx !== "number" || typeof cy !== "number") return null;
+  const half = size / 2;
+  return (
+    <g pointerEvents="none">
+      <line
+        x1={cx - half}
+        y1={cy - half}
+        x2={cx + half}
+        y2={cy + half}
+        stroke="color-mix(in oklab, var(--destructive) 88%, #7a1c1c)"
+        strokeWidth={2.3}
+        strokeLinecap="round"
+      />
+      <line
+        x1={cx - half}
+        y1={cy + half}
+        x2={cx + half}
+        y2={cy - half}
+        stroke="color-mix(in oklab, var(--destructive) 88%, #7a1c1c)"
+        strokeWidth={2.3}
+        strokeLinecap="round"
+      />
+    </g>
+  );
+}
+
+export function OverviewTrend({ trendByModel, failureByModel, windowStart, windowEnd }: OverviewTrendProps) {
   const [metric, setMetric] = useState<TrendMetricKey>("output_tps");
   const [activeSeries, setActiveSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES_KEYS));
   const isMobile = useIsMobile();
 
-  const { chartData, chartConfig, hasData, seriesStats } = useMemo(() => {
+  const { chartData, chartConfig, hasData, seriesStats, failureMarkers } = useMemo(() => {
     const start = parseIso(windowStart);
     const end = parseIso(windowEnd);
 
@@ -106,9 +134,14 @@ export function OverviewTrend({ trendByModel, windowStart, windowEnd }: Overview
       glm47flash: { min: null, max: null, latest: null },
       glm5: { min: null, max: null, latest: null },
     };
-
     if (!start || !end || end <= start) {
-      return { chartData: [], chartConfig: {}, hasData: false, seriesStats: emptyStats };
+      return {
+        chartData: [],
+        chartConfig: {},
+        hasData: false,
+        seriesStats: emptyStats,
+        failureMarkers: [] as Array<{ key: string; timestamp: string; model: ModelKey; value: number }>,
+      };
     }
 
     const allTimestamps = new Set<string>();
@@ -141,6 +174,9 @@ export function OverviewTrend({ trendByModel, windowStart, windowEnd }: Overview
       glm47flash: { min: null, max: null, latest: null },
       glm5: { min: null, max: null, latest: null },
     };
+    const rowsByTimestamp = new Map<string, ChartDataPoint>();
+    for (const row of data) rowsByTimestamp.set(row.timestamp, row);
+    const markers: Array<{ key: string; timestamp: string; model: ModelKey; value: number }> = [];
 
     for (const model of MODELS) {
       const seriesKey = getSeriesKey(model);
@@ -157,17 +193,41 @@ export function OverviewTrend({ trendByModel, windowStart, windowEnd }: Overview
         max: values.length > 0 ? Math.max(...values) : null,
         latest: values.length > 0 ? values[values.length - 1] : null,
       };
+
+      const failures = failureByModel[model] || [];
+      for (const failure of failures) {
+        const row = rowsByTimestamp.get(failure.timestamp);
+        if (!row) continue;
+        const markerValue = row[seriesKey];
+        if (typeof markerValue !== "number" || !Number.isFinite(markerValue)) continue;
+
+        markers.push({
+          key: `${model}:${failure.timestamp}`,
+          timestamp: failure.timestamp,
+          model,
+          value: markerValue,
+        });
+      }
     }
 
-    const hasAnyData = data.some((d) =>
+    const hasAnyMetricData = data.some((d) =>
       MODELS.some((model) => {
         const seriesKey = getSeriesKey(model);
         return d[seriesKey] !== null;
       }),
     );
+    const hasAnyFailures = markers.length > 0;
+    const hasAnyData = hasAnyMetricData || hasAnyFailures;
 
-    return { chartData: data, chartConfig: config, hasData: hasAnyData, seriesStats: stats };
-  }, [metric, trendByModel, windowEnd, windowStart]);
+    markers.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    return {
+      chartData: data,
+      chartConfig: config,
+      hasData: hasAnyData,
+      seriesStats: stats,
+      failureMarkers: markers,
+    };
+  }, [failureByModel, metric, trendByModel, windowEnd, windowStart]);
 
   const toggleSeries = (seriesKey: SeriesKey) => {
     setActiveSeries((prev) => {
@@ -224,6 +284,18 @@ export function OverviewTrend({ trendByModel, windowStart, windowEnd }: Overview
                 margin={{ left: isMobile ? 4 : 12, right: isMobile ? 4 : 12, top: 4, bottom: 4 }}
               >
                 <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="4 4" />
+                {failureMarkers
+                  .filter((marker) => activeSeries.has(getSeriesKey(marker.model)))
+                  .map((marker) => (
+                    <ReferenceDot
+                      key={marker.key}
+                      x={marker.timestamp}
+                      y={marker.value}
+                      ifOverflow="visible"
+                      isFront
+                      shape={<FailureX size={9} />}
+                    />
+                  ))}
                 <XAxis
                   dataKey="timestamp"
                   tickLine={false}
@@ -340,6 +412,10 @@ export function OverviewTrend({ trendByModel, windowStart, windowEnd }: Overview
                   </button>
                 );
               })}
+              <span className="inline-flex items-center gap-1.5 opacity-85">
+                <span className="w-3 text-center font-mono text-sm leading-none text-[color:var(--destructive)]">×</span>
+                <span className="font-medium text-[color:var(--card-foreground)]">Failed attempt</span>
+              </span>
             </div>
 
             <div className="mt-2 flex items-center justify-between text-xs text-[color:var(--muted-foreground)]">

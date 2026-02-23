@@ -5,6 +5,10 @@ export type TrendPoint = {
 };
 
 export type TrendByModel = Record<string, TrendPoint[]>;
+export type FailurePoint = {
+  timestamp: string;
+};
+export type FailureByModel = Record<string, FailurePoint[]>;
 
 export type ModelMetrics = {
   requests: number;
@@ -25,6 +29,7 @@ export type OverviewResponse = {
   };
   metrics_by_model: Record<string, ModelMetrics>;
   trend_by_model: TrendByModel;
+  failure_by_model: FailureByModel;
   errors: Array<{ type: string; count: number }>;
   models: string[];
   endpoint_family: "coding_plan";
