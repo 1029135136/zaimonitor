@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
 import type { FailureByModel, TrendByModel, TrendPoint } from "@/lib/overview-types";
 import { ALL_MODELS, MODEL_COLORS, MODEL_LABELS, type ModelKey } from "@/lib/constants";
+import { parseIso, formatUtcTime, formatUtcDate } from "@/lib/overview-format";
 import {
   ChartContainer,
   ChartTooltip,
@@ -31,25 +32,6 @@ function formatMetricValue(metric: TrendMetricKey, value: number | null): string
   if (value == null || !Number.isFinite(value)) return "-";
   if (metric === "ttft_ms") return `${(value / 1000).toFixed(2)}s`;
   return `${value.toFixed(2)} tps`;
-}
-
-function parseIso(raw: string | null): Date | null {
-  if (!raw) return null;
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed;
-}
-
-function formatUtcTime(raw: string | null): string {
-  const parsed = parseIso(raw);
-  if (!parsed) return "n/a";
-  return parsed.toLocaleTimeString([], { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hour12: false });
-}
-
-function formatUtcDate(raw: string | null): string {
-  const parsed = parseIso(raw);
-  if (!parsed) return "n/a";
-  return parsed.toLocaleDateString([], { timeZone: "UTC", month: "short", day: "2-digit" });
 }
 
 type ChartDataPoint = {
