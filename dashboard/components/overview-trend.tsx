@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
 import type { FailureByModel, TrendByModel, TrendPoint } from "@/lib/overview-types";
+import { ALL_MODELS, MODEL_COLORS, MODEL_LABELS, type ModelKey } from "@/lib/constants";
 import {
   ChartContainer,
   ChartTooltip,
@@ -19,22 +20,7 @@ type OverviewTrendProps = {
   windowEnd: string | null;
 };
 
-const MODELS = ["glm-5", "glm-4.7", "glm-4.7-flash"] as const;
-type ModelKey = (typeof MODELS)[number];
-
 type SeriesKey = "glm47" | "glm47flash" | "glm5";
-
-const MODEL_COLORS: Record<ModelKey, string> = {
-  "glm-4.7": "var(--chart-1)",
-  "glm-4.7-flash": "var(--chart-3)",
-  "glm-5": "var(--chart-2)",
-};
-
-const MODEL_LABELS: Record<ModelKey, string> = {
-  "glm-4.7": "GLM-4.7",
-  "glm-4.7-flash": "GLM-4.7-Flash",
-  "glm-5": "GLM-5",
-};
 
 const METRIC_OPTIONS: { key: TrendMetricKey; label: string }[] = [
   { key: "output_tps", label: "Tokens/sec" },
@@ -146,7 +132,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
 
     const allTimestamps = new Set<string>();
 
-    for (const model of MODELS) {
+    for (const model of ALL_MODELS) {
       const modelTrend = trendByModel[model] || [];
       modelTrend.forEach((p: TrendPoint) => allTimestamps.add(p.timestamp));
     }
@@ -156,7 +142,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
     const data: ChartDataPoint[] = sortedTimestamps.map((timestamp) => {
       const point: Partial<ChartDataPoint> = { timestamp };
 
-      for (const model of MODELS) {
+      for (const model of ALL_MODELS) {
         const modelTrend = trendByModel[model] || [];
         const trendPoint = modelTrend.find((p: TrendPoint) => p.timestamp === timestamp);
 
@@ -178,7 +164,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
     for (const row of data) rowsByTimestamp.set(row.timestamp, row);
     const markers: Array<{ key: string; timestamp: string; model: ModelKey; value: number }> = [];
 
-    for (const model of MODELS) {
+    for (const model of ALL_MODELS) {
       const seriesKey = getSeriesKey(model);
       const color = MODEL_COLORS[model];
 
@@ -211,7 +197,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
     }
 
     const hasAnyMetricData = data.some((d) =>
-      MODELS.some((model) => {
+      ALL_MODELS.some((model) => {
         const seriesKey = getSeriesKey(model);
         return d[seriesKey] !== null;
       }),
@@ -397,7 +383,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
             </ChartContainer>
 
             <div className="mt-3 flex flex-wrap items-center gap-4 text-xs">
-              {MODELS.map((model) => {
+              {ALL_MODELS.map((model) => {
                 const seriesKey = getSeriesKey(model);
                 return (
                   <button
@@ -432,7 +418,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
 
       {hasData && Object.keys(seriesStats).length > 0 && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {MODELS.map((model) => {
+          {ALL_MODELS.map((model) => {
             const seriesKey = getSeriesKey(model);
             const stats = seriesStats[seriesKey];
             if (!stats || !activeSeries.has(seriesKey)) return null;

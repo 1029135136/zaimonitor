@@ -1,17 +1,7 @@
 import type { ModelMetrics } from "@/lib/overview-types";
-
-const PRIMARY_MODEL = "glm-5" as const;
-const SIDE_MODELS = ["glm-4.7", "glm-4.7-flash"] as const;
-const MODELS = [PRIMARY_MODEL, ...SIDE_MODELS] as const;
-type ModelKey = (typeof MODELS)[number];
+import { ALL_MODELS, PRIMARY_MODEL, SIDE_MODELS, MODEL_LABELS, type ModelKey } from "@/lib/constants";
 
 type KpiVariant = "primary" | "secondary";
-
-const MODEL_LABELS: Record<ModelKey, string> = {
-  "glm-5": "GLM-5",
-  "glm-4.7": "GLM-4.7",
-  "glm-4.7-flash": "GLM-4.7-Flash",
-};
 
 type KpiCardProps = {
   label: string;

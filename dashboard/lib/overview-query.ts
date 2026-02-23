@@ -1,7 +1,7 @@
 import { MongoClient, Collection, Document } from "mongodb";
+import { ALL_MODELS } from "./constants";
 
 const ENDPOINT_FAMILY_CODING_PLAN = "coding_plan";
-const KNOWN_MODELS = ["glm-4.7-flash", "glm-4.7", "glm-5"] as const;
 
 interface Metrics {
   ttft_ms?: number;
@@ -353,9 +353,9 @@ export async function queryOverview(
     };
   }
 
-  for (const knownModel of KNOWN_MODELS) {
-    if (!metricsByModel[knownModel]) {
-      metricsByModel[knownModel] = {
+  for (const model of ALL_MODELS) {
+    if (!metricsByModel[model]) {
+      metricsByModel[model] = {
         requests: 0,
         successes: 0,
         failures: 0,
@@ -447,18 +447,18 @@ export async function queryOverview(
     }
   }
 
-  for (const knownModel of KNOWN_MODELS) {
-    if (!trendByModel[knownModel]) {
+  for (const model of ALL_MODELS) {
+    if (!trendByModel[model]) {
       const emptyTrend: Array<{ timestamp: string; output_tps?: number; ttft_ms?: number }> = [];
       let bucketCursor = new Date(firstBucketMs);
       while (bucketCursor.getTime() <= lastBucketMs) {
         emptyTrend.push({ timestamp: bucketCursor.toISOString() });
         bucketCursor = new Date(bucketCursor.getTime() + bucketSizeMs);
       }
-      trendByModel[knownModel] = emptyTrend;
+      trendByModel[model] = emptyTrend;
     }
-    if (!failureByModel[knownModel]) {
-      failureByModel[knownModel] = [];
+    if (!failureByModel[model]) {
+      failureByModel[model] = [];
     }
   }
 
@@ -468,7 +468,7 @@ export async function queryOverview(
     errorBreakdown.set(errorType, (errorBreakdown.get(errorType) || 0) + 1);
   }
 
-  const models = [...new Set([...docsByModel.keys(), ...KNOWN_MODELS])].sort((a, b) => a.localeCompare(b));
+  const models = [...new Set([...docsByModel.keys(), ...ALL_MODELS])].sort((a, b) => a.localeCompare(b));
   const latestTs = docs[docs.length - 1]?.timestamp || trendDocs[trendDocs.length - 1]?.timestamp;
 
   return {
