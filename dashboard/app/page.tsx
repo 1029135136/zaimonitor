@@ -27,20 +27,42 @@ export default function Home() {
         <section className="paper-panel rounded-2xl border border-red-300 p-5 text-sm text-red-700">{error}</section>
       ) : null}
 
-      <OverviewKpisPrimary
-        trendByModel={data?.trend_by_model ?? {}}
-      />
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <h2 className="font-display text-sm tracking-[0.16em] uppercase text-[color:var(--muted-foreground)]">
+            Current Snapshot
+          </h2>
+          <span className="rounded-full border border-[color:var(--border)] bg-[color:var(--paper)]/60 px-2.5 py-1 font-mono text-[10px] text-[color:var(--card-foreground)]">
+            Latest values
+          </span>
+        </div>
 
-      <OverviewTrend
-        trendByModel={data?.trend_by_model ?? {}}
-        failureByModel={data?.failure_by_model ?? {}}
-        windowStart={trendWindowStart}
-        windowEnd={trendWindowEnd}
-      />
+        <OverviewKpisPrimary
+          trendByModel={data?.trend_by_model ?? {}}
+        />
+      </section>
 
-      <OverviewKpisSecondary
-        data={data?.metrics_by_model ?? {}}
-      />
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <h2 className="font-display text-sm tracking-[0.16em] uppercase text-[color:var(--muted-foreground)]">
+            Historical Window
+          </h2>
+          <span className="rounded-full border border-[color:var(--border)] bg-[color:var(--paper)]/60 px-2.5 py-1 font-mono text-[10px] text-[color:var(--card-foreground)]">
+            Last {hours}h
+          </span>
+        </div>
+
+        <OverviewTrend
+          trendByModel={data?.trend_by_model ?? {}}
+          failureByModel={data?.failure_by_model ?? {}}
+          windowStart={trendWindowStart}
+          windowEnd={trendWindowEnd}
+        />
+
+        <OverviewKpisSecondary
+          data={data?.metrics_by_model ?? {}}
+        />
+      </section>
 
       <div className="fade-up fade-up-delay-3">
         <Link

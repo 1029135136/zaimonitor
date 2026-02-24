@@ -22,6 +22,7 @@ type OverviewTrendProps = {
 };
 
 type SeriesKey = "glm47" | "glm47flash" | "glm5";
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const METRIC_OPTIONS: { key: TrendMetricKey; label: string }[] = [
   { key: "output_tps", label: "Tokens/sec" },
@@ -93,7 +94,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
   const [activeSeries, setActiveSeries] = useState<Set<SeriesKey>>(new Set(ALL_SERIES_KEYS));
   const isMobile = useIsMobile();
 
-  const { chartData, chartConfig, hasData, seriesStats, failureMarkers } = useMemo(() => {
+  const { chartData, chartConfig, hasData, seriesStats, failureMarkers, isSevenDayWindow, dayTickTimestamps } = useMemo(() => {
     const start = parseIso(windowStart);
     const end = parseIso(windowEnd);
 
@@ -109,8 +110,11 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
         hasData: false,
         seriesStats: emptyStats,
         failureMarkers: [] as Array<{ key: string; timestamp: string; model: ModelKey; value: number }>,
+        isSevenDayWindow: false,
+        dayTickTimestamps: [] as string[],
       };
     }
+    const isSevenDayWindow = end.getTime() - start.getTime() >= SEVEN_DAYS_MS;
 
     const allTimestamps = new Set<string>();
 
@@ -186,6 +190,14 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
     );
     const hasAnyFailures = markers.length > 0;
     const hasAnyData = hasAnyMetricData || hasAnyFailures;
+    const dayTickTimestamps = isSevenDayWindow
+      ? data
+          .map((row) => row.timestamp)
+          .filter((timestamp) => {
+            const date = new Date(timestamp);
+            return date.getUTCHours() === 0 && date.getUTCMinutes() === 0;
+          })
+      : [];
 
     markers.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
     return {
@@ -194,6 +206,8 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
       hasData: hasAnyData,
       seriesStats: stats,
       failureMarkers: markers,
+      isSevenDayWindow,
+      dayTickTimestamps,
     };
   }, [failureByModel, metric, trendByModel, windowEnd, windowStart]);
 
@@ -214,7 +228,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
   return (
     <article className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
       <div className="mb-4">
-        <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Trends</h2>
+        <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Historical Trends</h2>
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
@@ -265,6 +279,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
                   ))}
                 <XAxis
                   dataKey="timestamp"
+                  ticks={isSevenDayWindow ? dayTickTimestamps : undefined}
                   tickLine={false}
                   axisLine={false}
                   tickMargin={isMobile ? 4 : 8}
@@ -272,6 +287,13 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
                   tick={{ fontSize: isMobile ? 10 : 12 }}
                   tickFormatter={(value) => {
                     const date = new Date(value);
+                    if (isSevenDayWindow) {
+                      return date.toLocaleDateString([], {
+                        timeZone: "UTC",
+                        month: "short",
+                        day: "numeric",
+                      });
+                    }
                     return date.toLocaleTimeString([], {
                       timeZone: "UTC",
                       hour: "2-digit",
