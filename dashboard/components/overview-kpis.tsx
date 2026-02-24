@@ -12,6 +12,7 @@ type KpiCardProps = {
   variant: KpiVariant;
   formatValue: (model: ModelKey) => string | null;
   formatDegraded?: (model: ModelKey) => boolean;
+  tooltip?: string;
 };
 
 type ValueTextProps = {
@@ -177,9 +178,9 @@ function KpiModelLayout({ formatValue, formatDegraded, unit, variant }: KpiModel
   );
 }
 
-function KpiCard({ label, delta, tone, unit, variant, formatValue, formatDegraded }: KpiCardProps) {
+function KpiCard({ label, delta, tone, unit, variant, formatValue, formatDegraded, tooltip }: KpiCardProps) {
   return (
-    <article className="paper-panel paper-noise fade-up rounded-2xl p-5">
+    <article className="paper-panel paper-noise fade-up rounded-2xl p-5" title={tooltip}>
       <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${tone}`}>
         {label}
       </div>
@@ -243,6 +244,7 @@ export function OverviewKpisPrimary({ trendByModel }: OverviewKpisPrimaryProps) 
         variant="primary"
         formatValue={(model: ModelKey) => formatRate(getLatestTrendValue(trendByModel, model, "output_tps"))}
         formatDegraded={(model: ModelKey) => isTpsDegraded(trendByModel, model)}
+        tooltip="Critical when below 40 tps"
       />
       <KpiCard
         label="Time to First Token Latest"
@@ -252,6 +254,7 @@ export function OverviewKpisPrimary({ trendByModel }: OverviewKpisPrimaryProps) 
         variant="primary"
         formatValue={(model: ModelKey) => msToSeconds(getLatestTrendValue(trendByModel, model, "ttft_ms"))}
         formatDegraded={(model: ModelKey) => isTtftDegraded(trendByModel, model)}
+        tooltip="Critical when 10s or higher"
       />
     </section>
   );
