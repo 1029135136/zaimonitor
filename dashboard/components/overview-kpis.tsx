@@ -1,5 +1,6 @@
 import type { ModelMetrics, TrendByModel } from "@/lib/overview-types";
 import { PRIMARY_MODEL, SIDE_MODELS, MODEL_LABELS, type ModelKey } from "@/lib/constants";
+import { isTpsDegraded, isTtftDegraded } from "@/lib/overview/degradation";
 
 type KpiVariant = "primary" | "secondary";
 
@@ -10,6 +11,7 @@ type KpiCardProps = {
   unit?: string;
   variant: KpiVariant;
   formatValue: (model: ModelKey) => string | null;
+  formatDegraded?: (model: ModelKey) => boolean;
 };
 
 type ValueTextProps = {
@@ -49,25 +51,34 @@ function ValueText({ value, unit, valueClassName, unitClassName, unitDetached = 
 
 type KpiModelLayoutProps = {
   formatValue: (model: ModelKey) => string | null;
+  formatDegraded?: (model: ModelKey) => boolean;
   unit?: string;
   variant: KpiVariant;
 };
 
-function KpiModelLayout({ formatValue, unit, variant }: KpiModelLayoutProps) {
+function KpiModelLayout({ formatValue, formatDegraded, unit, variant }: KpiModelLayoutProps) {
   const leadValue = formatValue(PRIMARY_MODEL);
+  const leadDegraded = formatDegraded?.(PRIMARY_MODEL) ?? false;
 
   if (variant === "secondary") {
     return (
       <div className="space-y-2.5">
-        <div className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/72 p-3.5">
-          <p className="text-center font-display text-xs font-semibold tracking-wide text-[color:var(--card-foreground)]">
-            {MODEL_LABELS[PRIMARY_MODEL]}
-          </p>
+        <div className={`rounded-2xl border p-3.5 ${leadDegraded ? "border-[color:var(--destructive)] bg-[color:var(--destructive)]/10" : "border-[color:var(--border)] bg-[color:var(--paper)]/72"}`}>
+          <div className="flex items-center justify-center gap-2">
+            <p className="text-center font-display text-xs font-semibold tracking-wide text-[color:var(--card-foreground)]">
+              {MODEL_LABELS[PRIMARY_MODEL]}
+            </p>
+            {leadDegraded && (
+              <span className="inline-flex items-center rounded-full bg-[color:var(--destructive)]/20 px-2 py-0.5 text-[10px] font-medium text-[color:var(--destructive)]">
+                critical
+              </span>
+            )}
+          </div>
           <div className="mt-2">
             <ValueText
               value={leadValue}
               unit={unit}
-              valueClassName="text-center font-display text-2xl leading-none text-[color:var(--card-foreground)]"
+              valueClassName={`text-center font-display text-2xl leading-none ${leadDegraded ? "text-[color:var(--destructive)]" : "text-[color:var(--card-foreground)]"}`}
               unitClassName="text-xs text-[color:var(--muted-foreground)]"
               unitDetached
             />
@@ -76,19 +87,27 @@ function KpiModelLayout({ formatValue, unit, variant }: KpiModelLayoutProps) {
 
         {SIDE_MODELS.map((model) => {
           const value = formatValue(model);
+          const critical = formatDegraded?.(model) ?? false;
           return (
             <div
               key={model}
-              className="rounded-xl border border-[color:var(--border)] bg-[color:var(--paper)]/60 px-3 py-2.5"
+              className={`rounded-xl border px-3 py-2.5 ${critical ? "border-[color:var(--destructive)] bg-[color:var(--destructive)]/10" : "border-[color:var(--border)] bg-[color:var(--paper)]/60"}`}
             >
               <div className="flex items-end justify-between gap-3">
-                <p className="font-display text-[11px] font-semibold tracking-wide text-[color:var(--muted-foreground)]">
-                  {MODEL_LABELS[model]}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="font-display text-[11px] font-semibold tracking-wide text-[color:var(--muted-foreground)]">
+                    {MODEL_LABELS[model]}
+                  </p>
+                  {critical && (
+                    <span className="inline-flex items-center rounded-full bg-[color:var(--destructive)]/20 px-1.5 py-0.5 text-[9px] font-medium text-[color:var(--destructive)]">
+                      critical
+                    </span>
+                  )}
+                </div>
                 <ValueText
                   value={value}
                   unit={unit}
-                  valueClassName="font-display text-lg leading-none text-[color:var(--card-foreground)]"
+                  valueClassName={`font-display text-lg leading-none ${critical ? "text-[color:var(--destructive)]" : "text-[color:var(--card-foreground)]"}`}
                   unitClassName="ml-1.5 text-[10px] text-[color:var(--muted-foreground)]"
                 />
               </div>
@@ -101,15 +120,22 @@ function KpiModelLayout({ formatValue, unit, variant }: KpiModelLayoutProps) {
 
   return (
     <div className="grid items-start gap-2.5 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-      <div className="self-start rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/72 p-4 sm:p-5">
+      <div className={`self-start rounded-2xl border p-4 sm:p-5 ${leadDegraded ? "border-[color:var(--destructive)] bg-[color:var(--destructive)]/10" : "border-[color:var(--border)] bg-[color:var(--paper)]/72"}`}>
         <div className="flex flex-col gap-2">
-          <p className="text-center font-display text-sm font-semibold tracking-wide text-[color:var(--card-foreground)]">
-            {MODEL_LABELS[PRIMARY_MODEL]}
-          </p>
+          <div className="flex items-center justify-center gap-2">
+            <p className="text-center font-display text-sm font-semibold tracking-wide text-[color:var(--card-foreground)]">
+              {MODEL_LABELS[PRIMARY_MODEL]}
+            </p>
+            {leadDegraded && (
+              <span className="inline-flex items-center rounded-full bg-[color:var(--destructive)]/20 px-2 py-0.5 text-xs font-medium text-[color:var(--destructive)]">
+                critical
+              </span>
+            )}
+          </div>
           <ValueText
             value={leadValue}
             unit={unit}
-            valueClassName="text-center font-display text-4xl leading-none text-[color:var(--card-foreground)] sm:text-[2.7rem]"
+            valueClassName={`text-center font-display text-4xl leading-none sm:text-[2.7rem] ${leadDegraded ? "text-[color:var(--destructive)]" : "text-[color:var(--card-foreground)]"}`}
             unitClassName="text-base text-[color:var(--muted-foreground)]"
             unitDetached
           />
@@ -119,19 +145,27 @@ function KpiModelLayout({ formatValue, unit, variant }: KpiModelLayoutProps) {
       <div className="grid gap-2.5">
         {SIDE_MODELS.map((model) => {
           const value = formatValue(model);
+          const critical = formatDegraded?.(model) ?? false;
           return (
             <div
               key={model}
-              className="rounded-2xl border border-[color:var(--border)] bg-[color:var(--paper)]/62 p-3"
+              className={`rounded-2xl border p-3 ${critical ? "border-[color:var(--destructive)] bg-[color:var(--destructive)]/10" : "border-[color:var(--border)] bg-[color:var(--paper)]/62"}`}
             >
               <div className="flex items-end justify-between gap-4">
-                <p className="font-display text-xs font-semibold tracking-wide text-[color:var(--muted-foreground)]">
-                  {MODEL_LABELS[model]}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="font-display text-xs font-semibold tracking-wide text-[color:var(--muted-foreground)]">
+                    {MODEL_LABELS[model]}
+                  </p>
+                  {critical && (
+                    <span className="inline-flex items-center rounded-full bg-[color:var(--destructive)]/20 px-1.5 py-0.5 text-[9px] font-medium text-[color:var(--destructive)]">
+                      critical
+                    </span>
+                  )}
+                </div>
                 <ValueText
                   value={value}
                   unit={unit}
-                  valueClassName="font-display text-xl leading-none text-[color:var(--card-foreground)]"
+                  valueClassName={`font-display text-xl leading-none ${critical ? "text-[color:var(--destructive)]" : "text-[color:var(--card-foreground)]"}`}
                   unitClassName="ml-1.5 text-xs text-[color:var(--muted-foreground)]"
                 />
               </div>
@@ -143,7 +177,7 @@ function KpiModelLayout({ formatValue, unit, variant }: KpiModelLayoutProps) {
   );
 }
 
-function KpiCard({ label, delta, tone, unit, variant, formatValue }: KpiCardProps) {
+function KpiCard({ label, delta, tone, unit, variant, formatValue, formatDegraded }: KpiCardProps) {
   return (
     <article className="paper-panel paper-noise fade-up rounded-2xl p-5">
       <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${tone}`}>
@@ -152,6 +186,7 @@ function KpiCard({ label, delta, tone, unit, variant, formatValue }: KpiCardProp
 
       <KpiModelLayout
         formatValue={formatValue}
+        formatDegraded={formatDegraded}
         unit={unit}
         variant={variant}
       />
@@ -207,6 +242,7 @@ export function OverviewKpisPrimary({ trendByModel }: OverviewKpisPrimaryProps) 
         unit="tps"
         variant="primary"
         formatValue={(model: ModelKey) => formatRate(getLatestTrendValue(trendByModel, model, "output_tps"))}
+        formatDegraded={(model: ModelKey) => isTpsDegraded(trendByModel, model)}
       />
       <KpiCard
         label="Time to First Token Latest"
@@ -215,6 +251,7 @@ export function OverviewKpisPrimary({ trendByModel }: OverviewKpisPrimaryProps) 
         unit="s"
         variant="primary"
         formatValue={(model: ModelKey) => msToSeconds(getLatestTrendValue(trendByModel, model, "ttft_ms"))}
+        formatDegraded={(model: ModelKey) => isTtftDegraded(trendByModel, model)}
       />
     </section>
   );

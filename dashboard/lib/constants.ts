@@ -17,3 +17,15 @@ export const MODEL_COLORS: Record<ModelKey, string> = {
   "glm-4.7": "var(--chart-1)",
   "glm-4.7-flash": "var(--chart-3)",
 };
+
+// Performance degradation thresholds
+export const DEGRADATION_THRESHOLDS = {
+  tps: {
+    min: 45,
+    unit: "tps",
+  },
+  ttft: {
+    max: 10000,
+    unit: "ms",
+  },
+} as const;
