@@ -1,4 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "Methodology",
+  description:
+    "How ZAI Monitor measures AI inference performance: measurement approach, prompt suite, and important caveats about directional benchmarking.",
+};
 
 export default function MethodologyPage() {
   return (
