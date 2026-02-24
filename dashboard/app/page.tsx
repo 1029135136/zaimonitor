@@ -28,7 +28,7 @@ export default function Home() {
       ) : null}
 
       <OverviewKpisPrimary
-        data={data?.metrics_by_model ?? {}}
+        trendByModel={data?.trend_by_model ?? {}}
       />
 
       <OverviewTrend

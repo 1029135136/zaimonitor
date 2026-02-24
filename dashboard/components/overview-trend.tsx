@@ -97,10 +97,10 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
     const start = parseIso(windowStart);
     const end = parseIso(windowEnd);
 
-    const emptyStats: Record<SeriesKey, { min: number | null; max: number | null; latest: number | null }> = {
-      glm47: { min: null, max: null, latest: null },
-      glm47flash: { min: null, max: null, latest: null },
-      glm5: { min: null, max: null, latest: null },
+    const emptyStats: Record<SeriesKey, { min: number | null; max: number | null; avg: number | null }> = {
+      glm47: { min: null, max: null, avg: null },
+      glm47flash: { min: null, max: null, avg: null },
+      glm5: { min: null, max: null, avg: null },
     };
     if (!start || !end || end <= start) {
       return {
@@ -137,10 +137,10 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
     });
 
     const config: ChartConfig = {};
-    const stats: Record<SeriesKey, { min: number | null; max: number | null; latest: number | null }> = {
-      glm47: { min: null, max: null, latest: null },
-      glm47flash: { min: null, max: null, latest: null },
-      glm5: { min: null, max: null, latest: null },
+    const stats: Record<SeriesKey, { min: number | null; max: number | null; avg: number | null }> = {
+      glm47: { min: null, max: null, avg: null },
+      glm47flash: { min: null, max: null, avg: null },
+      glm5: { min: null, max: null, avg: null },
     };
     const rowsByTimestamp = new Map<string, ChartDataPoint>();
     for (const row of data) rowsByTimestamp.set(row.timestamp, row);
@@ -159,7 +159,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
       stats[seriesKey] = {
         min: values.length > 0 ? Math.min(...values) : null,
         max: values.length > 0 ? Math.max(...values) : null,
-        latest: values.length > 0 ? values[values.length - 1] : null,
+        avg: values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
       };
 
       const failures = failureByModel[model] || [];
@@ -215,7 +215,6 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
     <article className="paper-panel paper-noise fade-up rounded-3xl p-5 md:p-7">
       <div className="mb-4">
         <h2 className="font-display text-2xl text-[color:var(--card-foreground)]">Trends</h2>
-        <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">Performance trends over a rolling UTC window.</p>
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
@@ -417,7 +416,7 @@ export function OverviewTrend({ trendByModel, failureByModel, windowStart, windo
                   </span>
                 </div>
                 <p className="mt-2 text-sm text-[color:var(--card-foreground)]">
-                  Latest: <span className="font-mono font-medium">{formatMetricValue(metric, stats.latest)}</span>
+                  Average: <span className="font-mono font-medium">{formatMetricValue(metric, stats.avg)}</span>
                 </p>
                 <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
                   Range: {formatMetricValue(metric, stats.min)} - {formatMetricValue(metric, stats.max)}

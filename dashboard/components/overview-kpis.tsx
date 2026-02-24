@@ -1,5 +1,5 @@
-import type { ModelMetrics } from "@/lib/overview-types";
-import { ALL_MODELS, PRIMARY_MODEL, SIDE_MODELS, MODEL_LABELS, type ModelKey } from "@/lib/constants";
+import type { ModelMetrics, TrendByModel } from "@/lib/overview-types";
+import { PRIMARY_MODEL, SIDE_MODELS, MODEL_LABELS, type ModelKey } from "@/lib/constants";
 
 type KpiVariant = "primary" | "secondary";
 
@@ -9,8 +9,7 @@ type KpiCardProps = {
   tone: string;
   unit?: string;
   variant: KpiVariant;
-  formatValue: (m: ModelMetrics | undefined) => string | null;
-  data: Record<string, ModelMetrics>;
+  formatValue: (model: ModelKey) => string | null;
 };
 
 type ValueTextProps = {
@@ -49,14 +48,13 @@ function ValueText({ value, unit, valueClassName, unitClassName, unitDetached = 
 }
 
 type KpiModelLayoutProps = {
-  formatValue: (m: ModelMetrics | undefined) => string | null;
-  data: Record<string, ModelMetrics>;
+  formatValue: (model: ModelKey) => string | null;
   unit?: string;
   variant: KpiVariant;
 };
 
-function KpiModelLayout({ formatValue, data, unit, variant }: KpiModelLayoutProps) {
-  const leadValue = formatValue(data[PRIMARY_MODEL]);
+function KpiModelLayout({ formatValue, unit, variant }: KpiModelLayoutProps) {
+  const leadValue = formatValue(PRIMARY_MODEL);
 
   if (variant === "secondary") {
     return (
@@ -77,7 +75,7 @@ function KpiModelLayout({ formatValue, data, unit, variant }: KpiModelLayoutProp
         </div>
 
         {SIDE_MODELS.map((model) => {
-          const value = formatValue(data[model]);
+          const value = formatValue(model);
           return (
             <div
               key={model}
@@ -120,7 +118,7 @@ function KpiModelLayout({ formatValue, data, unit, variant }: KpiModelLayoutProp
 
       <div className="grid gap-2.5">
         {SIDE_MODELS.map((model) => {
-          const value = formatValue(data[model]);
+          const value = formatValue(model);
           return (
             <div
               key={model}
@@ -145,7 +143,7 @@ function KpiModelLayout({ formatValue, data, unit, variant }: KpiModelLayoutProp
   );
 }
 
-function KpiCard({ label, delta, tone, unit, variant, formatValue, data }: KpiCardProps) {
+function KpiCard({ label, delta, tone, unit, variant, formatValue }: KpiCardProps) {
   return (
     <article className="paper-panel paper-noise fade-up rounded-2xl p-5">
       <div className={`mb-4 inline-flex rounded-full px-3 py-1 text-xs font-medium ${tone}`}>
@@ -154,7 +152,6 @@ function KpiCard({ label, delta, tone, unit, variant, formatValue, data }: KpiCa
 
       <KpiModelLayout
         formatValue={formatValue}
-        data={data}
         unit={unit}
         variant={variant}
       />
@@ -168,6 +165,10 @@ function KpiCard({ label, delta, tone, unit, variant, formatValue, data }: KpiCa
 
 type OverviewKpisProps = {
   data: Record<string, ModelMetrics>;
+};
+
+type OverviewKpisPrimaryProps = {
+  trendByModel: TrendByModel;
 };
 
 function msToSeconds(value: number | null | undefined): string | null {
@@ -185,26 +186,35 @@ function formatPercent(value: number | null | undefined): string | null {
   return value.toFixed(1);
 }
 
-export function OverviewKpisPrimary({ data }: OverviewKpisProps) {
+function getLatestTrendValue(
+  trendByModel: TrendByModel,
+  model: ModelKey,
+  metric: "output_tps" | "ttft_ms",
+): number | null {
+  const modelTrend = trendByModel[model] ?? [];
+  const latestPoint = modelTrend[modelTrend.length - 1];
+  const value = latestPoint?.[metric];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function OverviewKpisPrimary({ trendByModel }: OverviewKpisPrimaryProps) {
   return (
     <section className="grid gap-4 sm:grid-cols-2">
       <KpiCard
-        label="Tokens per Second Avg"
+        label="Tokens per Second Latest"
         delta=""
         tone="bg-[color:var(--accent-mint)]/60"
         unit="tps"
         variant="primary"
-        formatValue={(m: ModelMetrics | undefined) => formatRate(m?.avg_output_tps)}
-        data={data}
+        formatValue={(model: ModelKey) => formatRate(getLatestTrendValue(trendByModel, model, "output_tps"))}
       />
       <KpiCard
-        label="Time to First Token Avg"
+        label="Time to First Token Latest"
         delta=""
         tone="bg-[color:var(--accent-sky)]/55"
         unit="s"
         variant="primary"
-        formatValue={(m: ModelMetrics | undefined) => msToSeconds(m?.avg_ttft_ms)}
-        data={data}
+        formatValue={(model: ModelKey) => msToSeconds(getLatestTrendValue(trendByModel, model, "ttft_ms"))}
       />
     </section>
   );
@@ -218,16 +228,14 @@ export function OverviewKpisSecondary({ data }: OverviewKpisProps) {
         tone="bg-[color:var(--accent-gold)]/60"
         unit="%"
         variant="secondary"
-        formatValue={(m: ModelMetrics | undefined) => formatPercent(m?.success_rate_percent)}
-        data={data}
+        formatValue={(model: ModelKey) => formatPercent(data[model]?.success_rate_percent)}
       />
       <KpiCard
         label="p95 Time to First Token"
         tone="bg-[color:var(--accent-rose)]/58"
         unit="s"
         variant="secondary"
-        formatValue={(m: ModelMetrics | undefined) => msToSeconds(m?.p95_ttft_ms)}
-        data={data}
+        formatValue={(model: ModelKey) => msToSeconds(data[model]?.p95_ttft_ms)}
       />
       <KpiCard
         label="End-to-End Throughput Avg"
@@ -235,8 +243,7 @@ export function OverviewKpisSecondary({ data }: OverviewKpisProps) {
         tone="bg-[color:var(--accent-sky)]/45"
         unit="tps"
         variant="secondary"
-        formatValue={(m: ModelMetrics | undefined) => formatRate(m?.avg_provider_tps_end_to_end)}
-        data={data}
+        formatValue={(model: ModelKey) => formatRate(data[model]?.avg_provider_tps_end_to_end)}
       />
     </section>
   );
