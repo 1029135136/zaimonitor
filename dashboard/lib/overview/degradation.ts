@@ -1,4 +1,4 @@
-import type { TrendByModel } from "./types";
+import type { TrendByModel } from "@/lib/overview-types";
 import { DEGRADATION_THRESHOLDS, type ModelKey } from "@/lib/constants";
 
 function getLatestTrendValue(
