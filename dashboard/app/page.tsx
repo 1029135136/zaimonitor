@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Github } from "lucide-react";
 import { OverviewHeader } from "@/components/overview-header";
 import { OverviewKpisPrimary, OverviewKpisSecondary } from "@/components/overview-kpis";
 import { OverviewTrend } from "@/components/overview-trend";
 import { useOverviewData } from "@/hooks/use-overview-data";
+
+const GITHUB_REPO_URL = "https://github.com/BieggerM/zaimonitor";
 
 export default function Home() {
   const [hours, setHours] = useState("24");
@@ -72,6 +75,16 @@ export default function Home() {
           Methodology
         </Link>
       </div>
+
+      <a
+        href={GITHUB_REPO_URL}
+        target="_blank"
+        rel="noreferrer"
+        aria-label="GitHub repository"
+        className="fixed right-4 bottom-4 z-20 inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:var(--border)] bg-[color:var(--paper)]/70 text-[color:var(--muted-foreground)] opacity-85 shadow-[0_10px_20px_-14px_rgba(15,18,20,0.85)] transition hover:opacity-100"
+      >
+        <Github className="h-5 w-5" strokeWidth={1.8} />
+      </a>
     </div>
   );
 }
