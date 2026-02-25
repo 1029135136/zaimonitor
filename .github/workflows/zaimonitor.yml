@@ -45,7 +45,7 @@ jobs:
           failures=0
           for model in glm-5 glm-4.7 glm-4.7-flash; do
             echo "::group::coding_plan / ${model}"
-            ZAI_BASE_URL="https://api.z.ai/api/coding/paas/v4" \
+            ZAI_BASE_URL="https://open.bigmodel.cn/api/coding/paas/v4" \
             ZAI_MODEL="${model}" \
             python monitor_zai_inference.py
             status=$?
